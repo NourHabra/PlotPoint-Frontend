@@ -1,27 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import { useRouter } from "next/navigation";
+
 import { Download, FileUp, Highlighter, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
 import { templateApi, ApiError } from "@/lib/api";
 import { KML_FIELD_OPTIONS } from "@/lib/kml-constants";
 
-type FieldType = "text" | "kml" | "image" | "select" | "calculated";
+type FieldType = "text" | "kml" | "image" | "select";
 
 interface VariableDef {
     id: string;
@@ -312,7 +313,7 @@ export default function ImportTemplatePage() {
             // Revoke blob URLs
             try { docImages.forEach((d) => d.blobUrl && URL.revokeObjectURL(d.blobUrl)); } catch { }
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [docArrayBuffer]);
 
     // Wrap current text selection with a span marker
@@ -616,7 +617,7 @@ export default function ImportTemplatePage() {
                                                 </div>
                                             )}
                                             <div ref={previewRef} className="docx-preview">
-                                                {/* eslint-disable-next-line react/no-danger */}
+                                                { }
                                                 <div dangerouslySetInnerHTML={{ __html: htmlPreview }} />
                                             </div>
                                         </div>
@@ -729,7 +730,6 @@ export default function ImportTemplatePage() {
                                                     <SelectItem value="kml">KML Value</SelectItem>
                                                     <SelectItem value="image">Image</SelectItem>
                                                     <SelectItem value="select">Dropdown</SelectItem>
-                                                    <SelectItem value="calculated">Calculated</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -873,24 +873,6 @@ export default function ImportTemplatePage() {
                                                 </div>
                                             </div>
                                         )}
-                                        {(draftVar ? draftVar.type : activeVariable!.type) === "calculated" && (
-                                            <div className="space-y-2">
-                                                <Label>Expression</Label>
-                                                <Input placeholder="e.g., plot_area * value_2021" value={(draftVar ? (draftVar.expression || '') : (activeVariable!.expression || ''))}
-                                                    onChange={(e) => updateActiveVar({ expression: e.target.value })} />
-                                                <p className="text-xs text-muted-foreground">Use other field names in an expression. Evaluation happens during generation.</p>
-                                            </div>
-                                        )}
-                                        {/* 6. Required switch (hidden for KML values) */}
-                                        {((draftVar ? draftVar.type : activeVariable!.type) !== 'kml') && (
-                                            <div className="space-y-1">
-                                                <div className="flex items-center justify-between">
-                                                    <Label htmlFor="var-required">Required?</Label>
-                                                    <Switch id="var-required" checked={!!(draftVar ? draftVar.isRequired : activeVariable!.isRequired)} onCheckedChange={(v) => updateActiveVar({ isRequired: Boolean(v) })} />
-                                                </div>
-                                                <p className="text-xs text-muted-foreground">If enabled, this field must be filled when generating a report.</p>
-                                            </div>
-                                        )}
                                         <div className="flex flex-wrap gap-2">
                                             {draftVar ? (
                                                 <>
@@ -941,9 +923,7 @@ export default function ImportTemplatePage() {
                                             {v.type === "select" && v.options && v.options.length > 0 && (
                                                 <div className="text-xs text-muted-foreground">Options: {v.options.join(", ")}</div>
                                             )}
-                                            {v.type === "calculated" && v.expression && (
-                                                <div className="text-xs text-muted-foreground">Expr: {v.expression}</div>
-                                            )}
+
                                         </div>
                                         <div className="flex gap-2">
                                             <Button size="sm" variant={activeVarId === v.id ? "default" : "secondary"} onClick={() => {
@@ -998,9 +978,7 @@ export default function ImportTemplatePage() {
                                                     {v.type === 'select' && v.options && v.options.length > 0 && (
                                                         <p className="text-xs">Options: {v.options.join(', ')}</p>
                                                     )}
-                                                    {v.type === 'calculated' && v.expression && (
-                                                        <p className="text-xs">Expression: {v.expression}</p>
-                                                    )}
+
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <Button size="sm" variant="secondary" onClick={() => { setActiveVarId(v.id); setStep(2); }}>Edit</Button>
@@ -1090,6 +1068,4 @@ export default function ImportTemplatePage() {
         </div>
     );
 }
-
-
 
