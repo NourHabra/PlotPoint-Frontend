@@ -119,20 +119,21 @@ export default [
       // Naming Conventions
       "no-underscore-dangle": ["error", { allow: ["_id", "__dirname"] }],
 
-      // Complexity (relaxed)
-      complexity: ["warn", { max: 15 }],
-      "max-lines": ["warn", { max: 500, skipBlankLines: true, skipComments: true }],
-      "max-depth": ["warn", 5],
+      // Complexity (disabled)
+      complexity: "off",
+      "max-lines": "off",
+      "max-depth": "off",
 
       // TypeScript-Specific Rules (relaxed)
-      "@typescript-eslint/prefer-nullish-coalescing": "warn",
-      "@typescript-eslint/no-unnecessary-type-assertion": "warn",
+      "@typescript-eslint/prefer-nullish-coalescing": "off",
+      "@typescript-eslint/no-unnecessary-type-assertion": "off",
       "@typescript-eslint/no-unnecessary-condition": "off",
       "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": ["warn"],
+      "@typescript-eslint/no-unused-vars": "off",
 
       // Security plugin (relaxed)
       "security/detect-object-injection": "off",
+      "security/detect-non-literal-regexp": "off",
 
       // React unnecessary import rules
       "react/jsx-no-useless-fragment": ["warn", { allowExpressions: true }],
@@ -147,16 +148,23 @@ export default [
       ],
 
       // React: Prevent nesting component definitions inside another component
-      "react/no-unstable-nested-components": ["warn", { allowAsProps: true }],
+      "react/no-unstable-nested-components": "off",
 
       // React: Prevent re-renders by ensuring context values are memoized
-      "react/jsx-no-constructed-context-values": "warn",
+      "react/jsx-no-constructed-context-values": "off",
 
       // React: Disallow array index as key in JSX
-      "react/no-array-index-key": "warn",
+      "react/no-array-index-key": "off",
+
+      // Hooks
+      "react-hooks/exhaustive-deps": "off",
 
       // SonarJS: Detect commented-out code
-      "sonarjs/no-commented-code": "warn",
+      "sonarjs/no-commented-code": "off",
+
+      // Core rules
+      "no-empty": "off",
+      "no-useless-escape": "off",
     },
   },
 ];

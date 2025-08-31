@@ -1,64 +1,27 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, FileText, Eye, EyeOff, Copy, Download, Loader2, ChevronRight, Check } from "lucide-react";
+
+import { Download, Loader2, ChevronRight, Check } from "lucide-react";
 import { toast } from "sonner";
 
+import ImageEditor from "@/components/image-editor";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Textarea } from "@/components/ui/textarea";
+//
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
 import { templateApi, reportApi, ApiError } from "@/lib/api";
 import { Template, ContentBlock, ImportedVariable } from "@/types/template";
-import * as pdfjsLib from "pdfjs-dist";
-
-function PDFCanvasViewer({ pdfUrl }: { pdfUrl: string }) {
-    const containerRef = useRef<HTMLDivElement | null>(null);
-    const lastUrlRef = useRef<string>("");
-
-    useEffect(() => {
-        let cancelled = false;
-        async function render() {
-            if (!pdfUrl || !containerRef.current) return;
-            if (lastUrlRef.current === pdfUrl && containerRef.current.childElementCount > 0) return;
-            lastUrlRef.current = pdfUrl;
-            containerRef.current.innerHTML = "";
-            try {
-                const resp = await fetch(pdfUrl);
-                const ab = await resp.arrayBuffer();
-                const loadingTask = pdfjsLib.getDocument({ data: ab });
-                const pdf = await loadingTask.promise;
-                const viewportScale = 1.25;
-                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                    if (cancelled) break;
-                    const page = await pdf.getPage(pageNum);
-                    const viewport = page.getViewport({ scale: viewportScale });
-                    const canvas = document.createElement('canvas');
-                    canvas.width = viewport.width;
-                    canvas.height = viewport.height;
-                    const ctx = canvas.getContext('2d');
-                    if (!ctx) continue;
-                    await page.render({ canvasContext: ctx as any, viewport }).promise;
-                    containerRef.current.appendChild(canvas);
-                }
-            } catch (e) {
-                // ignore render errors
-            }
-        }
-        render();
-        return () => { cancelled = true; };
-    }, [pdfUrl]);
-
-    return <div ref={containerRef} className="w-full h-full overflow-auto bg-white" />;
-}
+// PDF preview via <object> below; PDFCanvasViewer removed
 
 interface VariableValue {
     [key: string]: string;
@@ -87,6 +50,8 @@ export default function FillTemplatePage() {
     const [downloading, setDownloading] = useState<{ type: 'pdf' | 'docx' } | null>(null);
     const [justSaved, setJustSaved] = useState<boolean>(false);
     const [isPreviewing, setIsPreviewing] = useState<boolean>(false);
+    const [imageEditorFor, setImageEditorFor] = useState<string | null>(null);
+    const [imageEditorInitialUrl, setImageEditorInitialUrl] = useState<string | undefined>(undefined);
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
@@ -125,6 +90,14 @@ export default function FillTemplatePage() {
             }
             return next;
         });
+    };
+
+    const resolveUploadsUrl = (u?: string): string | undefined => {
+        if (!u) return undefined;
+        if (/^https?:\/\//i.test(u) || u.startsWith('data:')) return u;
+        const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+        if (u.startsWith('/')) return base + u;
+        return base + '/' + u;
     };
 
     async function handleKmlFile(file: File) {
@@ -261,7 +234,7 @@ export default function FillTemplatePage() {
         if (selectedTemplate && step === 1) {
             refreshPdfPreview();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [selectedTemplate, step]);
 
     const loadTemplates = async () => {
@@ -333,7 +306,7 @@ export default function FillTemplatePage() {
         return () => {
             if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [variableValues, selectedTemplate, step]);
 
     // Stage 3: preview is triggered explicitly when clicking Preview in Stage 2
@@ -347,7 +320,7 @@ export default function FillTemplatePage() {
                 await reportApi.update(reportId, { values: variableValues });
             } catch (_) { }
         })();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+
     }, [variableValues, reportId, step]);
 
     const createReportIfNeeded = async () => {
@@ -572,8 +545,6 @@ export default function FillTemplatePage() {
             else toast.error('Failed to update status');
         }
     };
-
-
 
     const getUniqueVariables = (template: Template): Array<ContentBlock | ImportedVariable> => {
         if (template.variables && template.variables.length > 0) return template.variables;
@@ -820,21 +791,29 @@ export default function FillTemplatePage() {
                                                             ))}
                                                         </select>
                                                     ) : imp.type === 'image' ? (
-                                                        <div className="flex items-center gap-2">
-                                                            <Input id={variableName} type="file" accept="image/*" onChange={async (e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (!file) return;
-                                                                try {
-                                                                    const { url } = await templateApi.uploadImage(file);
-                                                                    // Store URL; backend fetches it and inserts with cover fit
-                                                                    handleVariableChange(variableName, url);
-                                                                    toast.success('Image uploaded');
-                                                                } catch (err) {
-                                                                    toast.error('Upload failed');
-                                                                }
-                                                            }} />
-                                                            {variableValues[variableName] && (
-                                                                <a href={variableValues[variableName]} target="_blank" rel="noreferrer" className="text-xs underline text-muted-foreground">View</a>
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <Input id={variableName} type="file" accept="image/*" onChange={async (e) => {
+                                                                    const file = e.target.files?.[0];
+                                                                    if (!file) return;
+                                                                    try {
+                                                                        const { url } = await templateApi.uploadImage(file);
+                                                                        handleVariableChange(variableName, url);
+                                                                        toast.success('Image uploaded');
+                                                                    } catch (err) {
+                                                                        toast.error('Upload failed');
+                                                                    }
+                                                                }} />
+                                                                <Button variant="outline" size="sm" type="button" onClick={() => {
+                                                                    setImageEditorFor(variableName);
+                                                                    setImageEditorInitialUrl(resolveUploadsUrl(variableValues[variableName] || undefined));
+                                                                }}>Edit image</Button>
+                                                                {variableValues[variableName] && (
+                                                                    <a href={resolveUploadsUrl(variableValues[variableName])} target="_blank" rel="noreferrer" className="text-xs underline text-muted-foreground">View</a>
+                                                                )}
+                                                            </div>
+                                                            {imp.description && (
+                                                                <p className="text-xs text-muted-foreground">You can upload directly or click Edit image to crop, draw, or pixelate before saving.</p>
                                                             )}
                                                         </div>
                                                     ) : (
@@ -1023,6 +1002,82 @@ export default function FillTemplatePage() {
                     </div>
                 </div>
             )}
+
+            {/* Image Editor Modal */}
+            <Dialog open={!!imageEditorFor} onOpenChange={(open) => { if (!open) { setImageEditorFor(null); setImageEditorInitialUrl(undefined); } }}>
+                <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Edit Image</DialogTitle>
+                        <DialogDescription>Crop, draw, and pixelate; then save to use the edited image in your report.</DialogDescription>
+                    </DialogHeader>
+                    <div className="mt-2 flex-1 min-h-0 overflow-auto">
+                        <div className="w-full max-h-[70vh]">
+                            <ImageEditor
+                                initialImageUrl={imageEditorInitialUrl}
+                                onExportBlob={async (blob) => {
+                                    if (!imageEditorFor) return;
+                                    try {
+                                        const file = new File([blob], `${imageEditorFor}.png`, { type: 'image/png' });
+                                        const { url } = await templateApi.uploadImage(file);
+                                        handleVariableChange(imageEditorFor, url);
+                                        toast.success('Edited image saved');
+                                        setImageEditorFor(null);
+                                        setImageEditorInitialUrl(undefined);
+                                    } catch (_) {
+                                        toast.error('Save failed');
+                                    }
+                                }}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter className="shrink-0">
+                        <Button variant="outline" onClick={() => { /* Reset inside ImageEditor via exposeRef if wired in future */ if (imageEditorInitialUrl) { setImageEditorInitialUrl(imageEditorInitialUrl); } }}>Reset</Button>
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="outline" aria-label="Download" onClick={async () => {
+                                        // Trigger export blob then auto-download
+                                        const img = document.querySelector<HTMLCanvasElement>('canvas');
+                                        if (!img) return;
+                                        img.toBlob((blob) => {
+                                            if (!blob) return;
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = 'edited.png';
+                                            a.click();
+                                            URL.revokeObjectURL(url);
+                                        }, 'image/png', 0.92);
+                                    }}>
+                                        <Download className="h-4 w-4" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>Download</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                        <Button onClick={() => {
+                            // Reuse onExportBlob path by dispatching a CustomEvent (simpler: call the same upload via current canvas)
+                            const canvas = document.querySelector<HTMLCanvasElement>('canvas');
+                            if (!canvas || !imageEditorFor) return;
+                            canvas.toBlob(async (blob) => {
+                                if (!blob) return;
+                                try {
+                                    const file = new File([blob], `${imageEditorFor}.png`, { type: 'image/png' });
+                                    const { url } = await templateApi.uploadImage(file);
+                                    handleVariableChange(imageEditorFor, url);
+                                    toast.success('Edited image saved');
+                                    setImageEditorFor(null);
+                                    setImageEditorInitialUrl(undefined);
+                                } catch (_) {
+                                    toast.error('Save failed');
+                                }
+                            }, 'image/png', 0.92);
+                        }}>Save</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Preview Stage */}
             {selectedTemplate && (selectedTemplate.requiresKml ? step === 4 : step === 3) && (
