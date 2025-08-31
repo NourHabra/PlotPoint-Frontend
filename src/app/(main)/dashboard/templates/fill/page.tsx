@@ -1005,15 +1005,16 @@ export default function FillTemplatePage() {
 
             {/* Image Editor Modal */}
             <Dialog open={!!imageEditorFor} onOpenChange={(open) => { if (!open) { setImageEditorFor(null); setImageEditorInitialUrl(undefined); } }}>
-                <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] flex flex-col">
+                <DialogContent className="max-w-none w-[100vw] max-h-[95vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Edit Image</DialogTitle>
                         <DialogDescription>Crop, draw, and pixelate; then save to use the edited image in your report.</DialogDescription>
                     </DialogHeader>
                     <div className="mt-2 flex-1 min-h-0 overflow-auto">
-                        <div className="w-full max-h-[70vh]">
+                        <div className="w-full h-[80vh]">
                             <ImageEditor
                                 initialImageUrl={imageEditorInitialUrl}
+                                maxDimension={2400}
                                 onExportBlob={async (blob) => {
                                     if (!imageEditorFor) return;
                                     try {

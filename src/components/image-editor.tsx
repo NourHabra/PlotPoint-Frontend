@@ -19,7 +19,7 @@ interface ImageEditorProps {
     maxDimension?: number; // max width/height for working canvas
 }
 
-export function ImageEditor({ initialImageUrl, onExportBlob, exposeRef, maxDimension = 1200 }: ImageEditorProps) {
+export function ImageEditor({ initialImageUrl, onExportBlob, exposeRef, maxDimension = 2400 }: ImageEditorProps) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const workRef = useRef<HTMLCanvasElement | null>(null); // offscreen working canvas
     const imgRef = useRef<HTMLImageElement | null>(null);

@@ -22,7 +22,9 @@ export default function PhotoEditorPage() {
                     <div className="flex items-center gap-2">
                         <Input placeholder="Paste image URL (optional)" value={url} onChange={(e) => setUrl(e.target.value)} />
                     </div>
-                    <ImageEditor initialImageUrl={url || undefined} />
+                    <div className="w-full h-[90vh]">
+                        <ImageEditor initialImageUrl={url || undefined} maxDimension={2400} />
+                    </div>
                 </CardContent>
             </Card>
         </div>
