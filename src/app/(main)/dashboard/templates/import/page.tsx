@@ -332,12 +332,24 @@ export default function ImportTemplatePage() {
             return;
         }
 
-        // Only support simple selections within a single text node for MVP
-        if (
-            range.startContainer !== range.endContainer ||
-            range.startContainer.nodeType !== Node.TEXT_NODE
-        ) {
-            toast("Please select within a single text segment (no multi-paragraph selections)");
+        // Allow selections within a single block-level container (e.g., same p/li/td/th/heading)
+        const getBlockContainer = (node: Node): HTMLElement | null => {
+            let current: Node | null = node;
+            while (current && current !== container) {
+                if (current instanceof HTMLElement) {
+                    const tag = current.tagName.toLowerCase();
+                    if (["p", "li", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
+                        return current;
+                    }
+                }
+                current = (current as Node).parentNode;
+            }
+            return container;
+        };
+        const startBlock = getBlockContainer(range.startContainer);
+        const endBlock = getBlockContainer(range.endContainer);
+        if (!startBlock || !endBlock || startBlock !== endBlock) {
+            toast("Please select within a single paragraph or table cell");
             return;
         }
 
@@ -353,7 +365,10 @@ export default function ImportTemplatePage() {
             span.dataset.varId = id;
             span.className = "bg-yellow-200/70 dark:bg-yellow-700/40 px-0.5 rounded-sm outline outline-1 outline-yellow-400";
             span.title = "Template variable";
-            range.surroundContents(span);
+            // Use extract/insert to safely wrap potentially multi-node inline selections
+            const contents = range.extractContents();
+            span.appendChild(contents);
+            range.insertNode(span);
 
             // Clear selection
             selection.removeAllRanges();
