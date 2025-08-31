@@ -186,101 +186,105 @@ export default function ReportsPage() {
                         <Card key={r._id} className="group hover:shadow-md transition-shadow h-full flex flex-col">
                             <CardHeader className="pb-3">
                                 <div className="space-y-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <CardTitle className="text-lg truncate">{r.title ?? r.name ?? "Untitled Report"}</CardTitle>
-                                        <div className="flex items-center gap-1">
-                                            <span className="inline-flex items-center rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-[10px] font-medium">
-                                                {r.status ?? "Draft"}
-                                            </span>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                        <MoreVertical className="h-4 w-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    {((r.status ?? "Draft") === "Submitted") ? (
-                                                        <DropdownMenuItem
-                                                            onClick={() => setBankInfoReport(r)}
-                                                        >
-                                                            <FileText className="h-4 w-4 mr-2" /> Bank Information
-                                                        </DropdownMenuItem>
-                                                    ) : (
-                                                        <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
-                                                                        <FileText className="h-4 w-4 mr-2" /> Bank Information
-                                                                    </div>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    <p>Available only for Submitted reports.</p>
-                                                                </TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
-                                                    )}
-                                                    {(() => {
-                                                        const canAdvance = !!nextStatus(r.status);
-                                                        return (
-                                                            <>
-                                                                {canAdvance ? (
-                                                                    <DropdownMenuItem
-                                                                        onClick={() => {
-                                                                            const nxt = nextStatus(r.status);
-                                                                            if (!nxt) return;
-                                                                            advanceStatus(r);
-                                                                        }}
-                                                                    >
-                                                                        <ChevronRight className="h-4 w-4 mr-2" /> Advance Status
-                                                                    </DropdownMenuItem>
-                                                                ) : (
-                                                                    <TooltipProvider>
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger asChild>
-                                                                                <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
-                                                                                    <ChevronRight className="h-4 w-4 mr-2" /> Advance Status
-                                                                                </div>
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent>
-                                                                                <p>Submitted reports cannot be advanced.</p>
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    </TooltipProvider>
-                                                                )}
+                                    <div className="flex items-center justify-between">
+                                        <span className="inline-flex items-center rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-[10px] font-medium">
+                                            {r.status ?? "Draft"}
+                                        </span>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                    <MoreVertical className="h-4 w-4" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                                {((r.status ?? "Draft") === "Submitted") ? (
+                                                    <DropdownMenuItem
+                                                        onClick={() => setBankInfoReport(r)}
+                                                    >
+                                                        <FileText className="h-4 w-4 mr-2" /> Bank Information
+                                                    </DropdownMenuItem>
+                                                ) : (
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
+                                                                    <FileText className="h-4 w-4 mr-2" /> Bank Information
+                                                                </div>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Available only for Submitted reports.</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                )}
+                                                {(() => {
+                                                    const canAdvance = !!nextStatus(r.status);
+                                                    return (
+                                                        <>
+                                                            {canAdvance ? (
+                                                                <DropdownMenuItem
+                                                                    onClick={() => {
+                                                                        const nxt = nextStatus(r.status);
+                                                                        if (!nxt) return;
+                                                                        advanceStatus(r);
+                                                                    }}
+                                                                >
+                                                                    <ChevronRight className="h-4 w-4 mr-2" /> Advance Status
+                                                                </DropdownMenuItem>
+                                                            ) : (
+                                                                <TooltipProvider>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
+                                                                                <ChevronRight className="h-4 w-4 mr-2" /> Advance Status
+                                                                            </div>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>
+                                                                            <p>Submitted reports cannot be advanced.</p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
+                                                            )}
 
-                                                                {deletingId === r._id ? (
-                                                                    <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground">
-                                                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...
-                                                                    </div>
-                                                                ) : canDelete(r) ? (
-                                                                    <DropdownMenuItem
-                                                                        onClick={() => {
-                                                                            setConfirmDeleteId(r._id);
-                                                                        }}
-                                                                    >
-                                                                        <Trash2 className="h-4 w-4 mr-2" /> Delete
-                                                                    </DropdownMenuItem>
-                                                                ) : (
-                                                                    <TooltipProvider>
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger asChild>
-                                                                                <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
-                                                                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
-                                                                                </div>
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent>
-                                                                                <p>Submitted reports cannot be deleted.</p>
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    </TooltipProvider>
-                                                                )}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </div>
+                                                            {deletingId === r._id ? (
+                                                                <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground">
+                                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...
+                                                                </div>
+                                                            ) : canDelete(r) ? (
+                                                                <DropdownMenuItem
+                                                                    onClick={() => {
+                                                                        setConfirmDeleteId(r._id);
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                                                </DropdownMenuItem>
+                                                            ) : (
+                                                                <TooltipProvider>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
+                                                                                <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                                                            </div>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>
+                                                                            <p>Submitted reports cannot be deleted.</p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
                                     </div>
+
+                                    <div className="overflow-hidden">
+                                        <CardTitle className="text-lg break-words whitespace-normal">
+                                            {r.title ?? r.name ?? "Untitled Report"}
+                                        </CardTitle>
+                                    </div>
+
                                     <CardDescription>
                                         {(() => {
                                             const d = new Date(r.createdAt);
