@@ -1,7 +1,5 @@
 "use client";
 
-/* eslint-disable max-lines */
-
 import { useEffect, useState } from "react";
 
 import { useRouter } from "next/navigation";
@@ -12,9 +10,11 @@ import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { reportApi, ApiError } from "@/lib/api";
 
@@ -26,6 +26,7 @@ interface ReportItem {
     title?: string;
     status?: string;
     values: Record<string, any>;
+    kmlData?: Record<string, any>;
     createdBy?: string;
     createdAt: string;
     updatedAt: string;
@@ -39,11 +40,30 @@ export default function ReportsPage() {
     const [downloading, setDownloading] = useState<{ id: string; type: "pdf" | "docx" } | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const [bankInfoReport, setBankInfoReport] = useState<ReportItem | null>(null);
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
         const idx = STATUS_FLOW.indexOf((s as ReportStatus) ?? "Draft");
         return idx >= 0 && idx < STATUS_FLOW.length - 1 ? STATUS_FLOW[idx + 1] : null;
+    };
+
+    const handleCopy = async (label: string, value: string) => {
+        try {
+            if (!value) return;
+            await navigator.clipboard.writeText(value);
+            toast.success(`${label} copied`);
+        } catch (_) {
+            toast.error("Copy failed");
+        }
+    };
+
+    const formatDateYmd = (iso: string) => {
+        const d = new Date(iso);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}/${m}/${day}`;
     };
 
     const loadReports = async () => {
@@ -74,8 +94,8 @@ export default function ReportsPage() {
             const blob = await reportApi.generate(report._id, type);
             const rawTitle = (report.title ?? report.name ?? "report").trim();
             const safeBase = rawTitle
-                .replace(/[\\/:*?"<>|]+/g, "") // remove invalid filename chars
-                .replace(/\s+/g, "_") // replace whitespace with underscores
+                .replace(/[\\/:*?"<>|]+/g, "")
+                .replace(/\s+/g, "_")
                 .replace(/_+/g, "_")
                 .replace(/^_+|_+$/g, "");
             const filename = `${safeBase || "report"}.${type}`;
@@ -92,7 +112,6 @@ export default function ReportsPage() {
             else toast.error("Download failed");
         } finally {
             setDownloading(null);
-            // Refresh to reflect potential auto-submitted status
             loadReports();
         }
     };
@@ -126,6 +145,12 @@ export default function ReportsPage() {
             setDeletingId(null);
             setConfirmDeleteId(null);
         }
+    };
+
+    const getReportField = (r: ReportItem | null, key: string): string => {
+        if (!r) return "";
+        const v = (r.values && (r.values as Record<string, unknown>)[key]) ?? (r.kmlData && (r.kmlData as Record<string, unknown>)[key]) ?? "";
+        return String(v ?? "");
     };
 
     return (
@@ -174,6 +199,26 @@ export default function ReportsPage() {
                                                     </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
+                                                    {((r.status ?? "Draft") === "Submitted") ? (
+                                                        <DropdownMenuItem
+                                                            onClick={() => setBankInfoReport(r)}
+                                                        >
+                                                            <FileText className="h-4 w-4 mr-2" /> Bank Information
+                                                        </DropdownMenuItem>
+                                                    ) : (
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
+                                                                        <FileText className="h-4 w-4 mr-2" /> Bank Information
+                                                                    </div>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Available only for Submitted reports.</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    )}
                                                     {(() => {
                                                         const canAdvance = !!nextStatus(r.status);
                                                         return (
@@ -320,6 +365,76 @@ export default function ReportsPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Bank Information dialog */}
+            <Dialog open={!!bankInfoReport} onOpenChange={(open) => { if (!open) setBankInfoReport(null); }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Bank Information</DialogTitle>
+                        <DialogDescription>Click a value to copy it to clipboard.</DialogDescription>
+                    </DialogHeader>
+                    <div className="overflow-x-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Field</TableHead>
+                                    <TableHead>Value</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                <TableRow>
+                                    <TableCell>Municipality</TableCell>
+                                    <TableCell
+                                        className="cursor-pointer select-text"
+                                        onClick={() => handleCopy("Municipality", getReportField(bankInfoReport, "municipality"))}
+                                    >
+                                        {getReportField(bankInfoReport, "municipality") || "-"}
+                                    </TableCell>
+                                </TableRow>
+                                <TableRow>
+                                    <TableCell>Coordinates</TableCell>
+                                    <TableCell
+                                        className="cursor-pointer select-text"
+                                        onClick={() => handleCopy("Coordinates", getReportField(bankInfoReport, "coordinates"))}
+                                    >
+                                        {getReportField(bankInfoReport, "coordinates") || "-"}
+                                    </TableCell>
+                                </TableRow>
+                                <TableRow>
+                                    <TableCell>Report Creation Date</TableCell>
+                                    <TableCell
+                                        className="cursor-pointer select-text"
+                                        onClick={() => handleCopy("Report Creation Date", bankInfoReport ? formatDateYmd(bankInfoReport.createdAt) : "")}
+                                    >
+                                        {bankInfoReport ? formatDateYmd(bankInfoReport.createdAt) : "-"}
+                                    </TableCell>
+                                </TableRow>
+                                <TableRow>
+                                    <TableCell>Value 2018</TableCell>
+                                    <TableCell
+                                        className="cursor-pointer select-text"
+                                        onClick={() => handleCopy("Value 2018", getReportField(bankInfoReport, "value_2018"))}
+                                    >
+                                        {getReportField(bankInfoReport, "value_2018") || "-"}
+                                    </TableCell>
+                                </TableRow>
+                                <TableRow>
+                                    <TableCell>Value 2021</TableCell>
+                                    <TableCell
+                                        className="cursor-pointer select-text"
+                                        onClick={() => handleCopy("Value 2021", getReportField(bankInfoReport, "value_2021"))}
+                                    >
+                                        {getReportField(bankInfoReport, "value_2021") || "-"}
+                                    </TableCell>
+                                </TableRow>
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setBankInfoReport(null)}>Close</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

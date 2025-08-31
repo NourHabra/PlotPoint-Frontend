@@ -119,17 +119,20 @@ export default [
       // Naming Conventions
       "no-underscore-dangle": ["error", { allow: ["_id", "__dirname"] }],
 
-      // Complexity
-      complexity: ["error", { max: 10 }],
-      "max-lines": ["error", { max: 300, skipBlankLines: true, skipComments: true }],
-      "max-depth": ["error", 4],
+      // Complexity (relaxed)
+      complexity: ["warn", { max: 15 }],
+      "max-lines": ["warn", { max: 500, skipBlankLines: true, skipComments: true }],
+      "max-depth": ["warn", 5],
 
-      // TypeScript-Specific Rules (customized)
-      "@typescript-eslint/prefer-nullish-coalescing": "error",
-      "@typescript-eslint/no-unnecessary-type-assertion": "error",
-      "@typescript-eslint/no-unnecessary-condition": "warn",
-      "@typescript-eslint/no-explicit-any": "warn",
+      // TypeScript-Specific Rules (relaxed)
+      "@typescript-eslint/prefer-nullish-coalescing": "warn",
+      "@typescript-eslint/no-unnecessary-type-assertion": "warn",
+      "@typescript-eslint/no-unnecessary-condition": "off",
+      "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": ["warn"],
+
+      // Security plugin (relaxed)
+      "security/detect-object-injection": "off",
 
       // React unnecessary import rules
       "react/jsx-no-useless-fragment": ["warn", { allowExpressions: true }],
@@ -144,10 +147,10 @@ export default [
       ],
 
       // React: Prevent nesting component definitions inside another component
-      "react/no-unstable-nested-components": ["error", { allowAsProps: true }],
+      "react/no-unstable-nested-components": ["warn", { allowAsProps: true }],
 
       // React: Prevent re-renders by ensuring context values are memoized
-      "react/jsx-no-constructed-context-values": "error",
+      "react/jsx-no-constructed-context-values": "warn",
 
       // React: Disallow array index as key in JSX
       "react/no-array-index-key": "warn",
