@@ -1,17 +1,21 @@
 "use client";
 
+/* eslint-disable max-lines */
+
 import { useEffect, useState } from "react";
+
 import { useRouter } from "next/navigation";
+
+import { FileText, Loader2, Download, Edit, ChevronRight, Trash2, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
-import { FileText, Loader2, Download, Edit, ChevronRight } from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { reportApi, ApiError } from "@/lib/api";
 
 interface ReportItem {
@@ -33,10 +37,12 @@ export default function ReportsPage() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [downloading, setDownloading] = useState<{ id: string; type: "pdf" | "docx" } | null>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
-        const idx = STATUS_FLOW.indexOf((s as ReportStatus) || "Draft");
+        const idx = STATUS_FLOW.indexOf((s as ReportStatus) ?? "Draft");
         return idx >= 0 && idx < STATUS_FLOW.length - 1 ? STATUS_FLOW[idx + 1] : null;
     };
 
@@ -44,7 +50,7 @@ export default function ReportsPage() {
         try {
             setLoading(true);
             const data = await reportApi.getAll();
-            setReports(data as any);
+            setReports(data as ReportItem[]);
         } catch (error) {
             if (error instanceof ApiError) toast.error(error.message);
             else toast.error("Failed to load reports");
@@ -58,7 +64,7 @@ export default function ReportsPage() {
     }, []);
 
     const filtered = reports.filter((r) => {
-        const name = r.name || "Untitled Report";
+        const name = r.name ?? "Untitled Report";
         return name.toLowerCase().includes(search.toLowerCase());
     });
 
@@ -66,9 +72,9 @@ export default function ReportsPage() {
         try {
             setDownloading({ id: report._id, type });
             const blob = await reportApi.generate(report._id, type);
-            const rawTitle = (report.title || report.name || "report").trim();
+            const rawTitle = (report.title ?? report.name ?? "report").trim();
             const safeBase = rawTitle
-                .replace(/[\\\/:*?"<>|]+/g, "") // remove invalid filename chars
+                .replace(/[\\/:*?"<>|]+/g, "") // remove invalid filename chars
                 .replace(/\s+/g, "_") // replace whitespace with underscores
                 .replace(/_+/g, "_")
                 .replace(/^_+|_+$/g, "");
@@ -96,11 +102,29 @@ export default function ReportsPage() {
             const next = nextStatus(report.status);
             if (!next) return;
             const updated = await reportApi.update(report._id, { status: next });
-            setReports((prev) => prev.map((r) => (r._id === report._id ? { ...r, status: (updated as any).status } : r)));
+            const updatedReport = updated as ReportItem;
+            setReports((prev) => prev.map((r) => (r._id === report._id ? { ...r, status: updatedReport.status } : r)));
             toast.success(`Status advanced to ${next}`);
         } catch (error) {
             if (error instanceof ApiError) toast.error(error.message);
             else toast.error("Failed to update status");
+        }
+    };
+
+    const canDelete = (r: ReportItem) => (r.status ?? "Draft") !== "Submitted";
+
+    const onConfirmDelete = async (id: string) => {
+        try {
+            setDeletingId(id);
+            await reportApi.delete(id);
+            setReports((prev) => prev.filter((r) => r._id !== id));
+            toast.success("Report deleted");
+        } catch (error) {
+            if (error instanceof ApiError) toast.error(error.message);
+            else toast.error("Failed to delete report");
+        } finally {
+            setDeletingId(null);
+            setConfirmDeleteId(null);
         }
     };
 
@@ -138,10 +162,79 @@ export default function ReportsPage() {
                             <CardHeader className="pb-3">
                                 <div className="space-y-1">
                                     <div className="flex items-center justify-between gap-2">
-                                        <CardTitle className="text-lg truncate">{r.title || r.name || "Untitled Report"}</CardTitle>
-                                        <span className="inline-flex items-center rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-[10px] font-medium">
-                                            {r.status || "Draft"}
-                                        </span>
+                                        <CardTitle className="text-lg truncate">{r.title ?? r.name ?? "Untitled Report"}</CardTitle>
+                                        <div className="flex items-center gap-1">
+                                            <span className="inline-flex items-center rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-[10px] font-medium">
+                                                {r.status ?? "Draft"}
+                                            </span>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                                        <MoreVertical className="h-4 w-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    {(() => {
+                                                        const canAdvance = !!nextStatus(r.status);
+                                                        return (
+                                                            <>
+                                                                {canAdvance ? (
+                                                                    <DropdownMenuItem
+                                                                        onClick={() => {
+                                                                            const nxt = nextStatus(r.status);
+                                                                            if (!nxt) return;
+                                                                            advanceStatus(r);
+                                                                        }}
+                                                                    >
+                                                                        <ChevronRight className="h-4 w-4 mr-2" /> Advance Status
+                                                                    </DropdownMenuItem>
+                                                                ) : (
+                                                                    <TooltipProvider>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
+                                                                                    <ChevronRight className="h-4 w-4 mr-2" /> Advance Status
+                                                                                </div>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                <p>Submitted reports cannot be advanced.</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                )}
+
+                                                                {deletingId === r._id ? (
+                                                                    <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground">
+                                                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Deleting...
+                                                                    </div>
+                                                                ) : canDelete(r) ? (
+                                                                    <DropdownMenuItem
+                                                                        onClick={() => {
+                                                                            setConfirmDeleteId(r._id);
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                                                    </DropdownMenuItem>
+                                                                ) : (
+                                                                    <TooltipProvider>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <div className="flex items-center px-2 py-1.5 text-sm text-muted-foreground cursor-not-allowed">
+                                                                                    <Trash2 className="h-4 w-4 mr-2" /> Delete
+                                                                                </div>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                <p>Submitted reports cannot be deleted.</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                )}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </div>
                                     </div>
                                     <CardDescription>
                                         {(() => {
@@ -164,7 +257,7 @@ export default function ReportsPage() {
                                                 <div>
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
-                                                            <Button variant="outline" size="sm" disabled={!!downloading || !["Final Review", "Submitted"].includes(r.status || "Draft")}>
+                                                            <Button variant="outline" size="sm" disabled={!!downloading || !["Final Review", "Submitted"].includes((r.status ?? "Draft"))}>
                                                                 {downloading?.id === r._id ? (
                                                                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                                                 ) : (
@@ -180,18 +273,13 @@ export default function ReportsPage() {
                                                     </DropdownMenu>
                                                 </div>
                                             </TooltipTrigger>
-                                            {!["Final Review", "Submitted"].includes(r.status || "Draft") && (
+                                            {!["Final Review", "Submitted"].includes((r.status ?? "Draft")) && (
                                                 <TooltipContent>
                                                     <p>This report cannot be exported before it is checked (move to Final Review).</p>
                                                 </TooltipContent>
                                             )}
                                         </Tooltip>
                                     </TooltipProvider>
-                                    {nextStatus(r.status) && (
-                                        <Button className="ml-auto" variant="default" size="sm" onClick={() => advanceStatus(r)}>
-                                            Advance <ChevronRight className="h-4 w-4 ml-2" />
-                                        </Button>
-                                    )}
                                 </div>
                             </CardContent>
                         </Card>
@@ -214,8 +302,25 @@ export default function ReportsPage() {
                     </CardContent>
                 </Card>
             )}
+
+            {/* Confirm delete dialog */}
+            <AlertDialog open={!!confirmDeleteId} onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete this report?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. The report will be permanently removed if it is not Submitted.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setConfirmDeleteId(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => confirmDeleteId && onConfirmDelete(confirmDeleteId)} disabled={!!deletingId}>
+                            {deletingId ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null} Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
-
 

@@ -1,6 +1,6 @@
 import type { Template } from "@/types/template";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000/api';
 
 export interface ApiResponse<T> {
   data?: T;
@@ -20,7 +20,7 @@ async function apiRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   // Attach Authorization header from localStorage if present (client-side)
   const authHeader = (() => {
     if (typeof window === 'undefined') return {} as Record<string, string>;
@@ -46,10 +46,10 @@ async function apiRequest<T>(
 
   try {
     const response = await fetch(url, config);
-    
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new ApiError(response.status, errorData.message || `HTTP error! status: ${response.status}`);
+      throw new ApiError(response.status, errorData.message ?? `HTTP error! status: ${response.status}`);
     }
 
     return await response.json();
@@ -105,7 +105,7 @@ export const templateApi = {
     const res = await fetch(url, { method: 'POST', body: form });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new ApiError(res.status, data.message || 'Import failed');
+      throw new ApiError(res.status, data.message ?? 'Import failed');
     }
     return res.json();
   },
@@ -118,9 +118,9 @@ export const templateApi = {
     const res = await fetch(url, { method: 'POST', body: form });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new ApiError(res.status, data.message || 'Upload failed');
+      throw new ApiError(res.status, data.message ?? 'Upload failed');
     }
-    return res.json() as Promise<{ filename: string; url: string }>; 
+    return res.json() as Promise<{ filename: string; url: string }>;
   },
 
   // Generate report
@@ -133,7 +133,7 @@ export const templateApi = {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new ApiError(res.status, data.message || 'Generation failed');
+      throw new ApiError(res.status, data.message ?? 'Generation failed');
     }
     const blob = await res.blob();
     return blob;
@@ -149,12 +149,12 @@ export const templateApi = {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new ApiError(res.status, data.message || 'Preview failed');
+      throw new ApiError(res.status, data.message ?? 'Preview failed');
     }
     const data = await res.json();
     return data.html as string;
   },
-}; 
+};
 
 // Auth API
 export const authApi = {
@@ -171,7 +171,7 @@ export const authApi = {
     const res = await fetch(url, { method: 'POST', body: form, headers });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new ApiError(res.status, data.message || 'Register failed');
+      throw new ApiError(res.status, data.message ?? 'Register failed');
     }
     return res.json();
   },
@@ -215,10 +215,12 @@ export const reportApi = {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new ApiError(res.status, data.message || 'Report generation failed');
+      throw new ApiError(res.status, data.message ?? 'Report generation failed');
     }
     return res.blob();
   },
+
+  delete: (id: string) => apiRequest(`/reports/${id}`, { method: 'DELETE' }),
 };
 
 // Dashboard API
