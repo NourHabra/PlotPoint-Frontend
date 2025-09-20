@@ -242,6 +242,29 @@ export const ticketApi = {
   withdraw: (id: string) => apiRequest(`/tickets/${id}/withdraw`, { method: 'POST' }),
 };
 
+// User Templates (per-user customizations)
+export interface UserTemplateDto {
+  _id: string;
+  userId: string;
+  templateId: string;
+  variableTextTemplates: Array<{
+    variableId: string;
+    snippets: Array<{ id: string; text: string }>;
+  }>;
+  checklist: Array<{ id: string; label: string; required?: boolean; order: number }>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const userTemplateApi = {
+  getForTemplate: (templateId: string) => apiRequest<UserTemplateDto>(`/user-templates?templateId=${encodeURIComponent(templateId)}`),
+  createForTemplate: (templateId: string, init?: Partial<Pick<UserTemplateDto, 'variableTextTemplates' | 'checklist'>>) =>
+    apiRequest<UserTemplateDto>(`/user-templates`, { method: 'POST', body: JSON.stringify({ templateId, ...(init || {}) }) }),
+  getById: (id: string) => apiRequest<UserTemplateDto>(`/user-templates/${id}`),
+  update: (id: string, payload: Partial<Pick<UserTemplateDto, 'variableTextTemplates' | 'checklist'>>) =>
+    apiRequest<UserTemplateDto>(`/user-templates/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+};
+
 export interface UserDto {
   id: string;
   name: string;

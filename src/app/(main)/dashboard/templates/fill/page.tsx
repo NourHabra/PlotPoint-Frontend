@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { Download, Loader2, ChevronRight, Check } from "lucide-react";
+import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import ImageEditor from "@/components/image-editor";
@@ -12,14 +12,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 //
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { templateApi, reportApi, ApiError } from "@/lib/api";
+import { templateApi, reportApi, ApiError, userTemplateApi, type UserTemplateDto } from "@/lib/api";
 import { Template, ContentBlock, ImportedVariable } from "@/types/template";
 // PDF preview via <object> below; PDFCanvasViewer removed
 
@@ -52,6 +52,12 @@ export default function FillTemplatePage() {
     const [isPreviewing, setIsPreviewing] = useState<boolean>(false);
     const [imageEditorFor, setImageEditorFor] = useState<string | null>(null);
     const [imageEditorInitialUrl, setImageEditorInitialUrl] = useState<string | undefined>(undefined);
+    const [userTemplate, setUserTemplate] = useState<UserTemplateDto | null>(null);
+    const [userTplLoading, setUserTplLoading] = useState<boolean>(false);
+    const [checklistCompleted, setChecklistCompleted] = useState<Record<string, boolean>>({});
+    const [newTplForVarId, setNewTplForVarId] = useState<string | null>(null);
+    const [newTplForVarName, setNewTplForVarName] = useState<string>("");
+    const [newTplText, setNewTplText] = useState<string>("");
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
@@ -201,6 +207,7 @@ export default function FillTemplatePage() {
                     // Load template for this report
                     const tpl = await templateApi.getById((report as any).templateId);
                     setSelectedTemplate(tpl as any);
+                    try { if ((tpl as any)._id) await loadUserTemplateFor(((tpl as any)._id) as string); } catch (_) { }
                     setVariableValues((report as any).values || {});
                     setReportTitle((report as any).title || (report as any).name || (tpl as any).name || "");
                     setReportStatus((report as any).status || "Draft");
@@ -222,6 +229,7 @@ export default function FillTemplatePage() {
                 if (template) {
                     setSelectedTemplate(template);
                     initializeVariableValues(template);
+                    try { await loadUserTemplateFor((template as any)._id as string); } catch (_) { }
                 }
             }
         };
@@ -254,6 +262,75 @@ export default function FillTemplatePage() {
         }
     };
 
+    const generateId = () => Math.random().toString(36).slice(2);
+
+    const loadUserTemplateFor = async (tplId: string) => {
+        try {
+            setUserTplLoading(true);
+            try {
+                const ut = await userTemplateApi.getForTemplate(tplId);
+                setUserTemplate(ut);
+            } catch (e) {
+                if (e instanceof ApiError && e.status === 404) {
+                    const created = await userTemplateApi.createForTemplate(tplId);
+                    setUserTemplate(created);
+                } else {
+                    throw e;
+                }
+            }
+        } catch (_) {
+            // non-blocking
+        } finally {
+            setUserTplLoading(false);
+        }
+    };
+
+    const getUserSnippetsForVar = (variableId: string) => {
+        const arr = userTemplate?.variableTextTemplates || [];
+        return arr.find(v => v.variableId === variableId) || null;
+    };
+
+    const upsertUserVarSnippets = async (variableId: string, updater: (curr: { variableId: string; snippets: Array<{ id: string; text: string }> } | null) => { variableId: string; snippets: Array<{ id: string; text: string }> }) => {
+        if (!userTemplate) return;
+        const current = getUserSnippetsForVar(variableId);
+        const nextEntry = updater(current ? { variableId: current.variableId, snippets: [...current.snippets] } : null);
+        const others = (userTemplate.variableTextTemplates || []).filter(v => v.variableId !== variableId);
+        const updated = { ...userTemplate, variableTextTemplates: [...others, nextEntry] } as UserTemplateDto;
+        setUserTemplate(updated);
+        try {
+            await userTemplateApi.update(userTemplate._id, { variableTextTemplates: updated.variableTextTemplates });
+        } catch (_) {
+            // revert on failure
+            setUserTemplate(userTemplate);
+            toast.error('Failed to save templates');
+        }
+    };
+
+    const addSnippetForVar = async (variableId: string, text: string) => {
+        await upsertUserVarSnippets(variableId, (curr) => {
+            const id = generateId();
+            const base = curr || { variableId, snippets: [] };
+            const snippets = [...base.snippets, { id, text }];
+            return { variableId, snippets };
+        });
+        toast.success('Template saved');
+    };
+
+    const deleteSnippetForVar = async (variableId: string, snippetId: string) => {
+        await upsertUserVarSnippets(variableId, (curr) => {
+            const base = curr || { variableId, snippets: [] };
+            const snippets = base.snippets.filter(s => s.id !== snippetId);
+            return { variableId, snippets };
+        });
+        toast.success('Template deleted');
+    };
+
+    const prefillDefaultsFromUserTemplate = () => {
+        if (!selectedTemplate || !userTemplate) return;
+        if (!selectedTemplate.variables || selectedTemplate.variables.length === 0) return;
+        // default feature removed: no auto-prefill
+    };
+
     const initializeVariableValues = (template: Template) => {
         const values: VariableValue = {};
         if (template.variables && template.variables.length > 0) {
@@ -279,6 +356,7 @@ export default function FillTemplatePage() {
         if (template) {
             setSelectedTemplate(template);
             initializeVariableValues(template);
+            try { loadUserTemplateFor((template as any)._id as string); } catch (_) { }
             setReportId(null);
             // Do not navigate immediately; allow preview and then continue
             // Reset previous preview state until new one loads
@@ -287,6 +365,10 @@ export default function FillTemplatePage() {
             setPdfBlob(null);
         }
     };
+
+    useEffect(() => {
+        prefillDefaultsFromUserTemplate();
+    }, [userTemplate, selectedTemplate]);
 
     const handleVariableChange = (variableName: string, value: string) => {
         setVariableValues(prev => ({
@@ -756,24 +838,65 @@ export default function FillTemplatePage() {
                                                             {label}
                                                             {imp.isRequired && <span className="text-destructive ml-1">*</span>}
                                                         </Label>
-                                                        {(imp.type === 'text' && (imp.textTemplates ?? []).length > 0) && (
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger asChild>
-                                                                    <Button variant="outline" size="sm" type="button">
-                                                                        Insert from template
-                                                                    </Button>
-                                                                </DropdownMenuTrigger>
-                                                                <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto p-2 space-y-2 w-[600px]">
-                                                                    {(imp.textTemplates ?? []).map((tt, idx) => (
-                                                                        <DropdownMenuItem key={`${tt}-${idx}`} onClick={() => handleVariableChange(variableName, tt)} className="p-0 hover:bg-transparent focus:bg-transparent">
-                                                                            <div className="w-full border rounded-md bg-card p-3 shadow-sm leading-relaxed whitespace-pre-wrap break-words text-sm">
-                                                                                <span className="mr-2 text-muted-foreground">{idx + 1}.</span>{tt}
-                                                                            </div>
-                                                                        </DropdownMenuItem>
-                                                                    ))}
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
-                                                        )}
+                                                        <div className="flex items-center gap-2">
+                                                            {(imp.type === 'text' && (imp.textTemplates ?? []).length > 0) && (
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="outline" size="sm" type="button">
+                                                                            Insert from template
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto p-2 space-y-2 w-[600px]">
+                                                                        {(imp.textTemplates ?? []).map((tt, idx) => (
+                                                                            <DropdownMenuItem key={`${tt}-${idx}`} onClick={() => handleVariableChange(variableName, tt)} className="p-0 hover:bg-transparent focus:bg-transparent">
+                                                                                <div className="w-full border rounded-md bg-card p-3 shadow-sm leading-relaxed whitespace-pre-wrap break-words text-sm">
+                                                                                    <span className="mr-2 text-muted-foreground">{idx + 1}.</span>{tt}
+                                                                                </div>
+                                                                            </DropdownMenuItem>
+                                                                        ))}
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            )}
+                                                            {imp.type === 'text' && (
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="outline" size="sm" type="button">
+                                                                            My Templates
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto w-[400px]">
+                                                                        {(() => {
+                                                                            const u = getUserSnippetsForVar(imp.id);
+                                                                            const items = u?.snippets || [];
+                                                                            return (
+                                                                                <div className="max-w-[600px]">
+                                                                                    {items.length === 0 && (
+                                                                                        <div className="px-3 py-2 text-sm text-muted-foreground">No templates yet</div>
+                                                                                    )}
+                                                                                    {items.map((sn, idx) => (
+                                                                                        <div key={sn.id}>
+                                                                                            <DropdownMenuItem className="flex items-start gap-2" onClick={() => handleVariableChange(variableName, sn.text)}>
+                                                                                                <div className="flex-1">
+                                                                                                    <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-w-[560px]">{sn.text}</div>
+                                                                                                </div>
+                                                                                                <button className="text-xs text-destructive" onClick={(e) => { e.stopPropagation(); deleteSnippetForVar(imp.id, sn.id); }}>
+                                                                                                    <Trash2 className="h-4 w-4" />
+                                                                                                </button>
+                                                                                            </DropdownMenuItem>
+                                                                                            {idx < items.length - 1 && <DropdownMenuSeparator />}
+                                                                                        </div>
+                                                                                    ))}
+                                                                                    <div className="h-px bg-border my-1" />
+                                                                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setNewTplForVarId(imp.id); setNewTplForVarName(variableName); setNewTplText(String(variableValues[variableName] || '')); }}>
+                                                                                        <Plus className="h-4 w-4 mr-2" /> Create new template
+                                                                                    </DropdownMenuItem>
+                                                                                </div>
+                                                                            );
+                                                                        })()}
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     {imp.description && (
                                                         <p className="text-xs text-muted-foreground">{imp.description}</p>
@@ -1000,6 +1123,90 @@ export default function FillTemplatePage() {
                             </Button>
                         </div>
                     </div>
+                    {/* Checklist Panel */}
+                    {userTemplate && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Checklist</CardTitle>
+                                <CardDescription>Personal checklist for this template. These items are saved to your profile.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => {
+                                        const id = generateId();
+                                        const next = [...(userTemplate.checklist || []), { id, label: 'New item', required: false, order: (userTemplate.checklist?.length || 0) }];
+                                        const updated = { ...userTemplate, checklist: next } as UserTemplateDto;
+                                        setUserTemplate(updated);
+                                        userTemplateApi.update(userTemplate._id, { checklist: next }).catch(() => { setUserTemplate(userTemplate); toast.error('Failed to add'); });
+                                    }}>Add item</Button>
+                                    <div className="text-sm text-muted-foreground ml-auto">
+                                        {Object.values(checklistCompleted).filter(Boolean).length}/{userTemplate.checklist?.length || 0} completed
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    {(userTemplate.checklist || []).sort((a, b) => (a.order || 0) - (b.order || 0)).map((it, idx, arr) => (
+                                        <div key={it.id} className="flex items-center gap-2">
+                                            <input type="checkbox" checked={!!checklistCompleted[it.id]} onChange={(e) => setChecklistCompleted(prev => ({ ...prev, [it.id]: e.target.checked }))} />
+                                            <Input value={it.label} onChange={(e) => {
+                                                const next = (userTemplate.checklist || []).map(x => x.id === it.id ? { ...x, label: e.target.value } : x);
+                                                const updated = { ...userTemplate, checklist: next } as UserTemplateDto;
+                                                setUserTemplate(updated);
+                                            }} onBlur={() => {
+                                                userTemplateApi.update(userTemplate!._id, { checklist: userTemplate!.checklist }).catch(() => toast.error('Failed to save label'));
+                                            }} />
+                                            <Button variant="ghost" size="icon" disabled={idx === 0} onClick={() => {
+                                                const list = [...(userTemplate.checklist || [])];
+                                                if (idx === 0) return;
+                                                const tmp = list[idx - 1];
+                                                list[idx - 1] = { ...list[idx], order: (list[idx - 1].order || 0) };
+                                                list[idx] = { ...tmp, order: (list[idx].order || 0) };
+                                                // normalize order
+                                                const normalized = list.map((x, i) => ({ ...x, order: i }));
+                                                const updated = { ...userTemplate, checklist: normalized } as UserTemplateDto;
+                                                setUserTemplate(updated);
+                                                userTemplateApi.update(userTemplate._id, { checklist: normalized }).catch(() => { setUserTemplate(userTemplate); toast.error('Failed to reorder'); });
+                                            }}><span className="sr-only">Up</span>↑</Button>
+                                            <Button variant="ghost" size="icon" disabled={idx === arr.length - 1} onClick={() => {
+                                                const list = [...(userTemplate.checklist || [])];
+                                                if (idx >= list.length - 1) return;
+                                                const tmp = list[idx + 1];
+                                                list[idx + 1] = { ...list[idx], order: (list[idx + 1].order || 0) };
+                                                list[idx] = { ...tmp, order: (list[idx].order || 0) };
+                                                const normalized = list.map((x, i) => ({ ...x, order: i }));
+                                                const updated = { ...userTemplate, checklist: normalized } as UserTemplateDto;
+                                                setUserTemplate(updated);
+                                                userTemplateApi.update(userTemplate._id, { checklist: normalized }).catch(() => { setUserTemplate(userTemplate); toast.error('Failed to reorder'); });
+                                            }}><span className="sr-only">Down</span>↓</Button>
+                                            <Button variant="ghost" size="icon" onClick={() => {
+                                                const next = (userTemplate.checklist || []).filter(x => x.id !== it.id).map((x, i) => ({ ...x, order: i }));
+                                                const updated = { ...userTemplate, checklist: next } as UserTemplateDto;
+                                                setUserTemplate(updated);
+                                                userTemplateApi.update(userTemplate._id, { checklist: next }).catch(() => { setUserTemplate(userTemplate); toast.error('Failed to delete'); });
+                                            }}>
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                            <label className="text-xs flex items-center gap-1 ml-2">
+                                                <input type="checkbox" checked={!!it.required} onChange={(e) => {
+                                                    const next = (userTemplate.checklist || []).map(x => x.id === it.id ? { ...x, required: e.target.checked } : x);
+                                                    const updated = { ...userTemplate, checklist: next } as UserTemplateDto;
+                                                    setUserTemplate(updated);
+                                                    userTemplateApi.update(userTemplate._id, { checklist: next }).catch(() => { setUserTemplate(userTemplate); toast.error('Failed to update'); });
+                                                }} /> required
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                                {(() => {
+                                    const required = (userTemplate.checklist || []).filter(i => i.required);
+                                    const missing = required.filter(i => !checklistCompleted[i.id]);
+                                    if (required.length > 0 && missing.length > 0) {
+                                        return <div className="text-xs text-destructive">{missing.length} required item(s) not checked.</div>;
+                                    }
+                                    return null;
+                                })()}
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
             )}
 
@@ -1076,6 +1283,38 @@ export default function FillTemplatePage() {
                                 }
                             }, 'image/png', 0.92);
                         }}>Save</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Create New Template Modal */}
+            <Dialog open={!!newTplForVarId} onOpenChange={(open) => { if (!open) { setNewTplForVarId(null); setNewTplText(""); setNewTplForVarName(""); } }}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Create new template</DialogTitle>
+                        <DialogDescription>Save your current text as a reusable template for this variable.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <div>
+                            <Label className="text-xs text-muted-foreground">Variable</Label>
+                            <div className="text-sm font-medium">{newTplForVarName}</div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="newTplText">Template Text</Label>
+                            <Textarea id="newTplText" rows={6} value={newTplText} onChange={(e) => setNewTplText(e.target.value)} />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setNewTplForVarId(null); setNewTplText(""); setNewTplForVarName(""); }}>Cancel</Button>
+                        <Button onClick={async () => {
+                            if (!newTplForVarId) return;
+                            const txt = String(newTplText || '').trim();
+                            if (!txt) { toast.error('Enter some text'); return; }
+                            await addSnippetForVar(newTplForVarId, txt);
+                            setNewTplForVarId(null);
+                            setNewTplText("");
+                            toast.success('Template created');
+                        }}>Create</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
