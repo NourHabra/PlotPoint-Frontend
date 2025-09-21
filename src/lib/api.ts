@@ -189,7 +189,7 @@ export const reportApi = {
   getAll: () => apiRequest('/reports'),
   getAllReportsAdmin: () => apiRequest('/reports/all'),
   getById: (id: string) => apiRequest(`/reports/${id}`),
-  update: (id: string, payload: Partial<{ name: string; title: string; status: string; values: Record<string, any>; isArchived: boolean; kmlData: Record<string, any> }>) =>
+  update: (id: string, payload: Partial<{ name: string; title: string; status: string; values: Record<string, any>; isArchived: boolean; kmlData: Record<string, any>; checklistProgress: Array<{ id: string; checked: boolean }>; checklistStatus: 'empty' | 'partial' | 'complete' }>) =>
     apiRequest(`/reports/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
 
   // Generate from a saved report
