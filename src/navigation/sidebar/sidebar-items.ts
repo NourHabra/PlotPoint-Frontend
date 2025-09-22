@@ -71,6 +71,12 @@ export const sidebarItems: NavGroup[] = [
         roles: ['Admin'],
       },
       {
+        title: "My Templates",
+        url: "/dashboard/my-templates",
+        icon: FileText,
+        roles: ['User'],
+      },
+      {
         title: "Create Report",
         url: "/dashboard/templates/fill",
         icon: FileEdit,

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { Download, Loader2, ChevronRight, Check } from "lucide-react";
+import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X } from "lucide-react";
 import { toast } from "sonner";
 
 import ImageEditor from "@/components/image-editor";
@@ -12,14 +12,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 //
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { templateApi, reportApi, ApiError } from "@/lib/api";
+import { templateApi, reportApi, ApiError, userTemplateApi, type UserTemplateDto } from "@/lib/api";
 import { Template, ContentBlock, ImportedVariable } from "@/types/template";
 // PDF preview via <object> below; PDFCanvasViewer removed
 
@@ -52,6 +52,13 @@ export default function FillTemplatePage() {
     const [isPreviewing, setIsPreviewing] = useState<boolean>(false);
     const [imageEditorFor, setImageEditorFor] = useState<string | null>(null);
     const [imageEditorInitialUrl, setImageEditorInitialUrl] = useState<string | undefined>(undefined);
+    const [userTemplate, setUserTemplate] = useState<UserTemplateDto | null>(null);
+    const [userTplLoading, setUserTplLoading] = useState<boolean>(false);
+    const [checklistCompleted, setChecklistCompleted] = useState<Record<string, boolean>>({});
+    const [isChecklistOpen, setIsChecklistOpen] = useState<boolean>(false);
+    const [newTplForVarId, setNewTplForVarId] = useState<string | null>(null);
+    const [newTplForVarName, setNewTplForVarName] = useState<string>("");
+    const [newTplText, setNewTplText] = useState<string>("");
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
@@ -201,7 +208,17 @@ export default function FillTemplatePage() {
                     // Load template for this report
                     const tpl = await templateApi.getById((report as any).templateId);
                     setSelectedTemplate(tpl as any);
+                    try { if ((tpl as any)._id) await loadUserTemplateFor(((tpl as any)._id) as string); } catch (_) { }
                     setVariableValues((report as any).values || {});
+                    // Restore checklist progress from saved report
+                    try {
+                        const cp = Array.isArray((report as any).checklistProgress) ? (report as any).checklistProgress : [];
+                        const map: Record<string, boolean> = {};
+                        for (const it of cp) {
+                            if (it && typeof it.id === 'string') map[it.id] = !!it.checked;
+                        }
+                        setChecklistCompleted(map);
+                    } catch (_) { }
                     setReportTitle((report as any).title || (report as any).name || (tpl as any).name || "");
                     setReportStatus((report as any).status || "Draft");
                     // Prefill KML data if present so we don't prompt re-upload
@@ -222,6 +239,8 @@ export default function FillTemplatePage() {
                 if (template) {
                     setSelectedTemplate(template);
                     initializeVariableValues(template);
+                    setChecklistCompleted({});
+                    try { await loadUserTemplateFor((template as any)._id as string); } catch (_) { }
                 }
             }
         };
@@ -254,6 +273,75 @@ export default function FillTemplatePage() {
         }
     };
 
+    const generateId = () => Math.random().toString(36).slice(2);
+
+    const loadUserTemplateFor = async (tplId: string) => {
+        try {
+            setUserTplLoading(true);
+            try {
+                const ut = await userTemplateApi.getForTemplate(tplId);
+                setUserTemplate(ut);
+            } catch (e) {
+                if (e instanceof ApiError && e.status === 404) {
+                    const created = await userTemplateApi.createForTemplate(tplId);
+                    setUserTemplate(created);
+                } else {
+                    throw e;
+                }
+            }
+        } catch (_) {
+            // non-blocking
+        } finally {
+            setUserTplLoading(false);
+        }
+    };
+
+    const getUserSnippetsForVar = (variableId: string) => {
+        const arr = userTemplate?.variableTextTemplates || [];
+        return arr.find(v => v.variableId === variableId) || null;
+    };
+
+    const upsertUserVarSnippets = async (variableId: string, updater: (curr: { variableId: string; snippets: Array<{ id: string; text: string }> } | null) => { variableId: string; snippets: Array<{ id: string; text: string }> }) => {
+        if (!userTemplate) return;
+        const current = getUserSnippetsForVar(variableId);
+        const nextEntry = updater(current ? { variableId: current.variableId, snippets: [...current.snippets] } : null);
+        const others = (userTemplate.variableTextTemplates || []).filter(v => v.variableId !== variableId);
+        const updated = { ...userTemplate, variableTextTemplates: [...others, nextEntry] } as UserTemplateDto;
+        setUserTemplate(updated);
+        try {
+            await userTemplateApi.update(userTemplate._id, { variableTextTemplates: updated.variableTextTemplates });
+        } catch (_) {
+            // revert on failure
+            setUserTemplate(userTemplate);
+            toast.error('Failed to save templates');
+        }
+    };
+
+    const addSnippetForVar = async (variableId: string, text: string) => {
+        await upsertUserVarSnippets(variableId, (curr) => {
+            const id = generateId();
+            const base = curr || { variableId, snippets: [] };
+            const snippets = [...base.snippets, { id, text }];
+            return { variableId, snippets };
+        });
+        toast.success('Template saved');
+    };
+
+    const deleteSnippetForVar = async (variableId: string, snippetId: string) => {
+        await upsertUserVarSnippets(variableId, (curr) => {
+            const base = curr || { variableId, snippets: [] };
+            const snippets = base.snippets.filter(s => s.id !== snippetId);
+            return { variableId, snippets };
+        });
+        toast.success('Template deleted');
+    };
+
+    const prefillDefaultsFromUserTemplate = () => {
+        if (!selectedTemplate || !userTemplate) return;
+        if (!selectedTemplate.variables || selectedTemplate.variables.length === 0) return;
+        // default feature removed: no auto-prefill
+    };
+
     const initializeVariableValues = (template: Template) => {
         const values: VariableValue = {};
         if (template.variables && template.variables.length > 0) {
@@ -279,6 +367,7 @@ export default function FillTemplatePage() {
         if (template) {
             setSelectedTemplate(template);
             initializeVariableValues(template);
+            try { loadUserTemplateFor((template as any)._id as string); } catch (_) { }
             setReportId(null);
             // Do not navigate immediately; allow preview and then continue
             // Reset previous preview state until new one loads
@@ -287,6 +376,10 @@ export default function FillTemplatePage() {
             setPdfBlob(null);
         }
     };
+
+    useEffect(() => {
+        prefillDefaultsFromUserTemplate();
+    }, [userTemplate, selectedTemplate]);
 
     const handleVariableChange = (variableName: string, value: string) => {
         setVariableValues(prev => ({
@@ -317,11 +410,16 @@ export default function FillTemplatePage() {
         if (!reportId) return;
         (async () => {
             try {
-                await reportApi.update(reportId, { values: variableValues });
+                // Also persist checklist progress/status
+                const total = userTemplate?.checklist?.length || 0;
+                const progress = (userTemplate?.checklist || []).map(it => ({ id: it.id, checked: !!checklistCompleted[it.id] }));
+                const checkedCount = progress.filter(p => p.checked).length;
+                const status = total === 0 ? 'empty' : checkedCount === 0 ? 'empty' : checkedCount === total ? 'complete' : 'partial';
+                await reportApi.update(reportId, { values: variableValues, checklistProgress: progress, checklistStatus: status });
             } catch (_) { }
         })();
 
-    }, [variableValues, reportId, step]);
+    }, [variableValues, reportId, step, userTemplate, checklistCompleted]);
 
     const createReportIfNeeded = async () => {
         if (!selectedTemplate) return null;
@@ -340,6 +438,22 @@ export default function FillTemplatePage() {
         } catch (_) {
             return null;
         }
+    };
+
+    const computeChecklistPayload = () => {
+        const total = userTemplate?.checklist?.length || 0;
+        const progress = (userTemplate?.checklist || []).map(it => ({ id: it.id, checked: !!checklistCompleted[it.id] }));
+        const checkedCount = progress.filter(p => p.checked).length;
+        const status = total === 0 ? 'empty' : checkedCount === 0 ? 'empty' : checkedCount === total ? 'complete' : 'partial';
+        return { progress, status } as { progress: Array<{ id: string; checked: boolean }>; status: 'empty' | 'partial' | 'complete' };
+    };
+
+    const computeChecklistPayloadFrom = (completedMap: Record<string, boolean>) => {
+        const total = userTemplate?.checklist?.length || 0;
+        const progress = (userTemplate?.checklist || []).map(it => ({ id: it.id, checked: !!completedMap[it.id] }));
+        const checkedCount = progress.filter(p => p.checked).length;
+        const status = total === 0 ? 'empty' : checkedCount === 0 ? 'empty' : checkedCount === total ? 'complete' : 'partial';
+        return { progress, status } as { progress: Array<{ id: string; checked: boolean }>; status: 'empty' | 'partial' | 'complete' };
     };
 
     const refreshHtmlPreview = async () => {
@@ -756,24 +870,65 @@ export default function FillTemplatePage() {
                                                             {label}
                                                             {imp.isRequired && <span className="text-destructive ml-1">*</span>}
                                                         </Label>
-                                                        {(imp.type === 'text' && (imp.textTemplates ?? []).length > 0) && (
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger asChild>
-                                                                    <Button variant="outline" size="sm" type="button">
-                                                                        Insert from template
-                                                                    </Button>
-                                                                </DropdownMenuTrigger>
-                                                                <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto p-2 space-y-2 w-[600px]">
-                                                                    {(imp.textTemplates ?? []).map((tt, idx) => (
-                                                                        <DropdownMenuItem key={`${tt}-${idx}`} onClick={() => handleVariableChange(variableName, tt)} className="p-0 hover:bg-transparent focus:bg-transparent">
-                                                                            <div className="w-full border rounded-md bg-card p-3 shadow-sm leading-relaxed whitespace-pre-wrap break-words text-sm">
-                                                                                <span className="mr-2 text-muted-foreground">{idx + 1}.</span>{tt}
-                                                                            </div>
-                                                                        </DropdownMenuItem>
-                                                                    ))}
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
-                                                        )}
+                                                        <div className="flex items-center gap-2">
+                                                            {(imp.type === 'text' && (imp.textTemplates ?? []).length > 0) && (
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="outline" size="sm" type="button">
+                                                                            Insert from template
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto p-2 space-y-2 w-[600px]">
+                                                                        {(imp.textTemplates ?? []).map((tt, idx) => (
+                                                                            <DropdownMenuItem key={`${tt}-${idx}`} onClick={() => handleVariableChange(variableName, tt)} className="p-0 hover:bg-transparent focus:bg-transparent">
+                                                                                <div className="w-full border rounded-md bg-card p-3 shadow-sm leading-relaxed whitespace-pre-wrap break-words text-sm">
+                                                                                    <span className="mr-2 text-muted-foreground">{idx + 1}.</span>{tt}
+                                                                                </div>
+                                                                            </DropdownMenuItem>
+                                                                        ))}
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            )}
+                                                            {imp.type === 'text' && (
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="outline" size="sm" type="button">
+                                                                            My Templates
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto w-[400px]">
+                                                                        {(() => {
+                                                                            const u = getUserSnippetsForVar(imp.id);
+                                                                            const items = u?.snippets || [];
+                                                                            return (
+                                                                                <div className="max-w-[600px]">
+                                                                                    {items.length === 0 && (
+                                                                                        <div className="px-3 py-2 text-sm text-muted-foreground">No templates yet</div>
+                                                                                    )}
+                                                                                    {items.map((sn, idx) => (
+                                                                                        <div key={sn.id}>
+                                                                                            <DropdownMenuItem className="flex items-start gap-2" onClick={() => handleVariableChange(variableName, sn.text)}>
+                                                                                                <div className="flex-1">
+                                                                                                    <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-w-[560px]">{sn.text}</div>
+                                                                                                </div>
+                                                                                                <button className="text-xs text-destructive" onClick={(e) => { e.stopPropagation(); deleteSnippetForVar(imp.id, sn.id); }}>
+                                                                                                    <Trash2 className="h-4 w-4" />
+                                                                                                </button>
+                                                                                            </DropdownMenuItem>
+                                                                                            {idx < items.length - 1 && <DropdownMenuSeparator />}
+                                                                                        </div>
+                                                                                    ))}
+                                                                                    <div className="h-px bg-border my-1" />
+                                                                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setNewTplForVarId(imp.id); setNewTplForVarName(variableName); setNewTplText(String(variableValues[variableName] || '')); }}>
+                                                                                        <Plus className="h-4 w-4 mr-2" /> Create new template
+                                                                                    </DropdownMenuItem>
+                                                                                </div>
+                                                                            );
+                                                                        })()}
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     {imp.description && (
                                                         <p className="text-xs text-muted-foreground">{imp.description}</p>
@@ -1000,6 +1155,7 @@ export default function FillTemplatePage() {
                             </Button>
                         </div>
                     </div>
+                    {/* Checklist moved to Preview stage overlay */}
                 </div>
             )}
 
@@ -1080,6 +1236,38 @@ export default function FillTemplatePage() {
                 </DialogContent>
             </Dialog>
 
+            {/* Create New Template Modal */}
+            <Dialog open={!!newTplForVarId} onOpenChange={(open) => { if (!open) { setNewTplForVarId(null); setNewTplText(""); setNewTplForVarName(""); } }}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Create new template</DialogTitle>
+                        <DialogDescription>Save your current text as a reusable template for this variable.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <div>
+                            <Label className="text-xs text-muted-foreground">Variable</Label>
+                            <div className="text-sm font-medium">{newTplForVarName}</div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="newTplText">Template Text</Label>
+                            <Textarea id="newTplText" rows={6} value={newTplText} onChange={(e) => setNewTplText(e.target.value)} />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setNewTplForVarId(null); setNewTplText(""); setNewTplForVarName(""); }}>Cancel</Button>
+                        <Button onClick={async () => {
+                            if (!newTplForVarId) return;
+                            const txt = String(newTplText || '').trim();
+                            if (!txt) { toast.error('Enter some text'); return; }
+                            await addSnippetForVar(newTplForVarId, txt);
+                            setNewTplForVarId(null);
+                            setNewTplText("");
+                            toast.success('Template created');
+                        }}>Create</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Preview Stage */}
             {selectedTemplate && (selectedTemplate.requiresKml ? step === 4 : step === 3) && (
                 <Card>
@@ -1152,6 +1340,7 @@ export default function FillTemplatePage() {
                                 </div>
                             )}
                         </div>
+                        {/* Checklist Overlay moved out to global render */}
                         <div className="mt-6">
                             <Card>
                                 <CardHeader className="flex items-center justify-between">
@@ -1171,6 +1360,65 @@ export default function FillTemplatePage() {
                         </div>
                     </CardContent>
                 </Card>
+            )}
+            {/* Global Checklist FAB + Sheet across stages */}
+            {selectedTemplate && userTemplate && (
+                <>
+                    {!isChecklistOpen && (
+                        <button
+                            type="button"
+                            onClick={() => setIsChecklistOpen(true)}
+                            className="fixed bottom-6 right-6 z-40 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center"
+                            title="Open checklist"
+                        >
+                            <ListCheck className="h-6 w-6" />
+                        </button>
+                    )}
+                    {isChecklistOpen && (
+                        <div className="fixed inset-y-0 right-0 w-[360px] z-40">
+                            <div className="h-full bg-card border-l shadow-xl flex flex-col">
+                                <div className="p-4 border-b flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        {(() => {
+                                            const total = userTemplate.checklist?.length || 0;
+                                            const checked = Object.values(checklistCompleted).filter(Boolean).length;
+                                            const status = total === 0 ? 'empty' : checked === 0 ? 'empty' : checked === total ? 'complete' : 'partial';
+                                            const color = status === 'complete' ? 'bg-emerald-500' : status === 'partial' ? 'bg-yellow-500' : 'bg-red-500';
+                                            return <span className={`inline-block w-2.5 h-2.5 rounded-full ${color}`} title={status} />;
+                                        })()}
+                                        <div className="font-medium">Checklist</div>
+                                    </div>
+                                    <button type="button" onClick={() => setIsChecklistOpen(false)} className="h-8 w-8 inline-flex items-center justify-center rounded-md hover:bg-muted">
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                </div>
+                                <div className="p-4 overflow-auto">
+                                    <div className="space-y-2">
+                                        {(userTemplate.checklist || []).sort((a, b) => (a.order || 0) - (b.order || 0)).map((it) => (
+                                            <div key={it.id} className="flex items-center gap-2">
+                                                <input type="checkbox" checked={!!checklistCompleted[it.id]} onChange={async (e) => {
+                                                    const id = reportId || (await createReportIfNeeded());
+                                                    if (!id) return toast.error('Failed to save report');
+                                                    const next = { ...checklistCompleted, [it.id]: e.target.checked } as Record<string, boolean>;
+                                                    setChecklistCompleted(next);
+                                                    try {
+                                                        const { progress, status } = computeChecklistPayloadFrom(next);
+                                                        await reportApi.update(id, { checklistProgress: progress, checklistStatus: status });
+                                                    } catch (_) { }
+                                                }} />
+                                                <div className="text-sm text-foreground">{it.label}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+            {/* Spacer to avoid FAB overlapping action buttons */}
+            {selectedTemplate && userTemplate && (
+                <div className="h-24" />
             )}
         </div>
     );

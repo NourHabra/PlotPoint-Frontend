@@ -32,6 +32,7 @@ export function authMiddleware(req: NextRequest) {
         "/dashboard/templates/fill",
         "/dashboard/reports",
         "/dashboard/support",
+        "/dashboard/my-templates",
       ];
       if (role !== "Admin") {
         // Allow whitelisted paths explicitly
