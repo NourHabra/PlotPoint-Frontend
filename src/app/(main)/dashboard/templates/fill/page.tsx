@@ -971,6 +971,15 @@ export default function FillTemplatePage() {
                                                                 <p className="text-xs text-muted-foreground">You can upload directly or click Edit image to crop, draw, or pixelate before saving.</p>
                                                             )}
                                                         </div>
+                                                    ) : imp.type === 'text' ? (
+                                                        <Textarea
+                                                            id={variableName}
+                                                            className="resize-y"
+                                                            value={variableValues[variableName] || ''}
+                                                            onChange={(e) => handleVariableChange(variableName, e.target.value)}
+                                                            required={imp.isRequired}
+                                                            rows={3}
+                                                        />
                                                     ) : (
                                                         <Input
                                                             id={variableName}
@@ -1062,6 +1071,7 @@ export default function FillTemplatePage() {
                                                             </DropdownMenu>
                                                         )}
                                                         <Textarea
+                                                            className="resize-y"
                                                             id={variableName}
                                                             value={variableValues[variableName] || ''}
                                                             onChange={(e) => handleVariableChange(variableName, e.target.value)}
