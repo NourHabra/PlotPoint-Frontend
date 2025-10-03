@@ -25,6 +25,7 @@ interface ReportItem {
     name?: string;
     title?: string;
     status?: string;
+    checklistStatus?: 'empty' | 'partial' | 'complete';
     values: Record<string, any>;
     kmlData?: Record<string, any>;
     createdBy?: string;
@@ -187,8 +188,11 @@ export default function ReportsPage() {
                             <CardHeader className="pb-3">
                                 <div className="space-y-1">
                                     <div className="flex items-center justify-between">
-                                        <span className="inline-flex items-center rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-[10px] font-medium">
-                                            {r.status ?? "Draft"}
+                                        <span className="inline-flex items-center gap-2">
+                                            <span className={`inline-block w-2.5 h-2.5 rounded-full ${r.checklistStatus === 'complete' ? 'bg-emerald-500' : r.checklistStatus === 'partial' ? 'bg-yellow-500' : 'bg-red-500'}`} title={r.checklistStatus || 'empty'} />
+                                            <span className="inline-flex items-center rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-[10px] font-medium">
+                                                {r.status ?? "Draft"}
+                                            </span>
                                         </span>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
