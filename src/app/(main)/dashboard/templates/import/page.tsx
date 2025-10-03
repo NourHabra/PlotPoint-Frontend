@@ -457,27 +457,7 @@ export default function ImportTemplatePage() {
         }
     };
 
-    // Text templates management for text variables
-    const addTextTemplate = (value: string) => {
-        if (!value) return;
-        if (draftVar) {
-            setDraftVar({ ...draftVar, textTemplates: Array.from(new Set([...(draftVar.textTemplates ?? []), value])) });
-            return;
-        }
-        if (activeVarId) {
-            setVariables(prev => prev.map(v => (v.id === activeVarId ? { ...v, textTemplates: Array.from(new Set([...(v.textTemplates ?? []), value])) } : v)));
-        }
-    };
-
-    const removeTextTemplate = (value: string) => {
-        if (draftVar) {
-            setDraftVar({ ...draftVar, textTemplates: (draftVar.textTemplates ?? []).filter(o => o !== value) });
-            return;
-        }
-        if (activeVarId) {
-            setVariables(prev => prev.map(v => (v.id === activeVarId ? { ...v, textTemplates: (v.textTemplates ?? []).filter(o => o !== value) } : v)));
-        }
-    };
+    // Admin text templates removed: no add/remove UI
 
     const saveDraftVariable = () => {
         if (!draftVar) return;
@@ -862,32 +842,7 @@ export default function ImportTemplatePage() {
                                                 </div>
                                             </div>
                                         )}
-                                        {(draftVar ? draftVar.type : activeVariable!.type) === "text" && (
-                                            <div className="space-y-2">
-                                                <Label>Text templates</Label>
-                                                <div className="flex gap-2">
-                                                    <Input placeholder="Add text template" onKeyDown={(e) => {
-                                                        if (e.key === "Enter") {
-                                                            e.preventDefault();
-                                                            const target = e.target as HTMLInputElement;
-                                                            const v = target.value.trim();
-                                                            if (v) addTextTemplate(v);
-                                                            target.value = "";
-                                                        }
-                                                    }} />
-                                                </div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {(((draftVar && draftVar.textTemplates) ? draftVar.textTemplates : activeVariable?.textTemplates) ?? []).map(tt => (
-                                                        <Badge key={tt} variant="secondary" className="gap-1">
-                                                            {tt}
-                                                            <button className="ml-1" onClick={() => removeTextTemplate(tt)} aria-label={`Remove ${tt}`}>
-                                                                ×
-                                                            </button>
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
+                                        {/* Admin text templates UI removed */}
                                         <div className="flex flex-wrap gap-2">
                                             {draftVar ? (
                                                 <>

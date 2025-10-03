@@ -871,24 +871,7 @@ export default function FillTemplatePage() {
                                                             {imp.isRequired && <span className="text-destructive ml-1">*</span>}
                                                         </Label>
                                                         <div className="flex items-center gap-2">
-                                                            {(imp.type === 'text' && (imp.textTemplates ?? []).length > 0) && (
-                                                                <DropdownMenu>
-                                                                    <DropdownMenuTrigger asChild>
-                                                                        <Button variant="outline" size="sm" type="button">
-                                                                            Insert from template
-                                                                        </Button>
-                                                                    </DropdownMenuTrigger>
-                                                                    <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto p-2 space-y-2 w-[600px]">
-                                                                        {(imp.textTemplates ?? []).map((tt, idx) => (
-                                                                            <DropdownMenuItem key={`${tt}-${idx}`} onClick={() => handleVariableChange(variableName, tt)} className="p-0 hover:bg-transparent focus:bg-transparent">
-                                                                                <div className="w-full border rounded-md bg-card p-3 shadow-sm leading-relaxed whitespace-pre-wrap break-words text-sm">
-                                                                                    <span className="mr-2 text-muted-foreground">{idx + 1}.</span>{tt}
-                                                                                </div>
-                                                                            </DropdownMenuItem>
-                                                                        ))}
-                                                                    </DropdownMenuContent>
-                                                                </DropdownMenu>
-                                                            )}
+                                                            {/* Admin 'Insert from template' removed; keep only My Templates */}
                                                             {imp.type === 'text' && (
                                                                 <DropdownMenu>
                                                                     <DropdownMenuTrigger asChild>
@@ -1013,24 +996,7 @@ export default function FillTemplatePage() {
                                                         {label}
                                                         {(cb as any).isRequired && <span className="text-destructive ml-1">*</span>}
                                                     </Label>
-                                                    {Array.isArray((cb as any).textTemplates) && (cb as any).textTemplates.length > 0 && (
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild>
-                                                                <Button variant="outline" size="sm" type="button">
-                                                                    Insert from template
-                                                                </Button>
-                                                            </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto p-2 space-y-2 w-[600px]">
-                                                                {(cb as any).textTemplates.map((tt: string, idx: number) => (
-                                                                    <DropdownMenuItem key={`${tt}-${idx}`} onClick={() => handleVariableChange(variableName, tt)} className="p-0 hover:bg-transparent focus:bg-transparent">
-                                                                        <div className="w-full border rounded-md bg-card p-3 shadow-sm leading-relaxed whitespace-pre-wrap break-words text-sm">
-                                                                            <span className="mr-2 text-muted-foreground">{idx + 1}.</span>{tt}
-                                                                        </div>
-                                                                    </DropdownMenuItem>
-                                                                ))}
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
-                                                    )}
+                                                    {/* Admin 'Insert from template' removed */}
                                                 </div>
                                                 {(cb as any).description && (
                                                     <p className="text-xs text-muted-foreground">{(cb as any).description}</p>
@@ -1054,22 +1020,7 @@ export default function FillTemplatePage() {
                                                     />
                                                 ) : (
                                                     <div className="space-y-2">
-                                                        {Array.isArray((cb as any).textTemplates) && (cb as any).textTemplates.length > 0 && (
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger asChild>
-                                                                    <Button variant="secondary" size="sm" type="button">
-                                                                        Insert from template
-                                                                    </Button>
-                                                                </DropdownMenuTrigger>
-                                                                <DropdownMenuContent align="start" className="max-w-[600px]">
-                                                                    {(cb as any).textTemplates.map((tt: string) => (
-                                                                        <DropdownMenuItem key={tt} onClick={() => handleVariableChange(variableName, tt)} className="whitespace-pre-wrap break-words">
-                                                                            {tt}
-                                                                        </DropdownMenuItem>
-                                                                    ))}
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
-                                                        )}
+                                                        {/* Admin 'Insert from template' removed */}
                                                         <Textarea
                                                             className="resize-y"
                                                             id={variableName}
