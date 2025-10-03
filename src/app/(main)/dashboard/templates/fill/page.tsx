@@ -1361,8 +1361,8 @@ export default function FillTemplatePage() {
                     </CardContent>
                 </Card>
             )}
-            {/* Global Checklist FAB + Sheet across stages */}
-            {selectedTemplate && userTemplate && (
+            {/* Global Checklist FAB + Sheet across stages (visible only when not in Draft) */}
+            {selectedTemplate && userTemplate && (reportStatus !== 'Draft') && (
                 <>
                     {!isChecklistOpen && (
                         <button
