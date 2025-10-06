@@ -436,26 +436,7 @@ export default function ImportTemplatePage() {
         if (activeVarId === id) setActiveVarId(null);
     };
 
-    const addSelectOption = (value: string) => {
-        if (!value) return;
-        if (draftVar) {
-            setDraftVar({ ...draftVar, options: Array.from(new Set([...(draftVar.options || []), value])) });
-            return;
-        }
-        if (activeVarId) {
-            setVariables(prev => prev.map(v => (v.id === activeVarId ? { ...v, options: Array.from(new Set([...(v.options || []), value])) } : v)));
-        }
-    };
-
-    const removeSelectOption = (value: string) => {
-        if (draftVar) {
-            setDraftVar({ ...draftVar, options: (draftVar.options ?? []).filter(o => o !== value) });
-            return;
-        }
-        if (activeVarId) {
-            setVariables(prev => prev.map(v => (v.id === activeVarId ? { ...v, options: (v.options ?? []).filter(o => o !== value) } : v)));
-        }
-    };
+    // Admin ability to add dropdown options removed
 
     // Admin text templates removed: no add/remove UI
 
@@ -477,10 +458,6 @@ export default function ImportTemplatePage() {
         // Force required=false for KML values
         if (toSave.type === "kml") {
             (toSave as any).isRequired = false;
-        }
-        if (toSave.type === "select" && (!toSave.options || toSave.options.length === 0)) {
-            toast("Add at least one dropdown option");
-            return;
         }
         setVariables(prev => [...prev, toSave]);
         // Reset variable details pane to empty state after saving
@@ -816,32 +793,7 @@ export default function ImportTemplatePage() {
                                         </div>
                                         {/* 5. Extras per type */}
                                         {(draftVar ? draftVar.type : activeVariable!.type) === "kml" && null}
-                                        {(draftVar ? draftVar.type : activeVariable!.type) === "select" && (
-                                            <div className="space-y-2">
-                                                <Label>Dropdown options</Label>
-                                                <div className="flex gap-2">
-                                                    <Input placeholder="Add option" onKeyDown={(e) => {
-                                                        if (e.key === "Enter") {
-                                                            e.preventDefault();
-                                                            const target = e.target as HTMLInputElement;
-                                                            const v = target.value.trim();
-                                                            if (v) addSelectOption(v);
-                                                            target.value = "";
-                                                        }
-                                                    }} />
-                                                </div>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {(((draftVar && draftVar.options) ? draftVar.options : activeVariable?.options) ?? []).map(opt => (
-                                                        <Badge key={opt} variant="secondary" className="gap-1">
-                                                            {opt}
-                                                            <button className="ml-1" onClick={() => removeSelectOption(opt)} aria-label={`Remove ${opt}`}>
-                                                                ×
-                                                            </button>
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
+                                        {/* Admin dropdown options UI removed */}
                                         {/* Admin text templates UI removed */}
                                         <div className="flex flex-wrap gap-2">
                                             {draftVar ? (

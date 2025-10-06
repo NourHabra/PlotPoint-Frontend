@@ -301,6 +301,11 @@ export default function FillTemplatePage() {
         return arr.find(v => v.variableId === variableId) || null;
     };
 
+    const getUserSelectOptionsForVar = (variableId: string) => {
+        const arr = (userTemplate as any)?.variableSelectOptions || [];
+        return arr.find((v: any) => v.variableId === variableId) || null;
+    };
+
     const upsertUserVarSnippets = async (variableId: string, updater: (curr: { variableId: string; snippets: Array<{ id: string; text: string }> } | null) => { variableId: string; snippets: Array<{ id: string; text: string }> }) => {
         if (!userTemplate) return;
         const current = getUserSnippetsForVar(variableId);
@@ -314,6 +319,21 @@ export default function FillTemplatePage() {
             // revert on failure
             setUserTemplate(userTemplate);
             toast.error('Failed to save templates');
+        }
+    };
+
+    const upsertUserVarSelectOptions = async (variableId: string, updater: (curr: { variableId: string; options: Array<{ id: string; value: string }> } | null) => { variableId: string; options: Array<{ id: string; value: string }> }) => {
+        if (!userTemplate) return;
+        const current = getUserSelectOptionsForVar(variableId);
+        const nextEntry = updater(current ? { variableId: current.variableId, options: [...current.options] } : null);
+        const others = ((userTemplate as any).variableSelectOptions || []).filter((v: any) => v.variableId !== variableId);
+        const updated = { ...(userTemplate as any), variableSelectOptions: [...others, nextEntry] } as UserTemplateDto & { variableSelectOptions: Array<{ variableId: string; options: Array<{ id: string; value: string }> }> };
+        setUserTemplate(updated as any);
+        try {
+            await userTemplateApi.update(userTemplate._id, { variableSelectOptions: (updated as any).variableSelectOptions });
+        } catch (_) {
+            setUserTemplate(userTemplate);
+            toast.error('Failed to save dropdown options');
         }
     };
 
@@ -911,23 +931,93 @@ export default function FillTemplatePage() {
                                                                     </DropdownMenuContent>
                                                                 </DropdownMenu>
                                                             )}
+                                                            {imp.type === 'select' && (
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="outline" size="sm" type="button">My Dropdowns</Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="p-2 space-y-2 w-[360px]">
+                                                                        {(() => {
+                                                                            const u = getUserSelectOptionsForVar(imp.id);
+                                                                            const items = u?.options || [];
+                                                                            return (
+                                                                                <div className="max-w-[320px]">
+                                                                                    {items.length === 0 && (
+                                                                                        <div className="px-3 py-2 text-sm text-muted-foreground">No items yet</div>
+                                                                                    )}
+                                                                                    {items.map((opt: { id: string; value: string }) => (
+                                                                                        <div key={opt.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-muted">
+                                                                                            <div className="text-sm truncate">{opt.value}</div>
+                                                                                            <button className="text-xs text-destructive" onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                upsertUserVarSelectOptions(imp.id, (curr) => {
+                                                                                                    const base = curr || { variableId: imp.id, options: [] };
+                                                                                                    return { variableId: base.variableId, options: base.options.filter((o: { id: string; value: string }) => o.id !== opt.id) };
+                                                                                                });
+                                                                                            }}>
+                                                                                                <Trash2 className="h-4 w-4" />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                    <div className="h-px bg-border my-1" />
+                                                                                    <div className="flex gap-2">
+                                                                                        <Input placeholder="New item" onKeyDown={(e) => {
+                                                                                            if (e.key === 'Enter') {
+                                                                                                e.preventDefault();
+                                                                                                const target = e.target as HTMLInputElement;
+                                                                                                const v = (target.value || '').trim();
+                                                                                                if (!v) return;
+                                                                                                const id = generateId();
+                                                                                                upsertUserVarSelectOptions(imp.id, (curr) => {
+                                                                                                    const base = curr || { variableId: imp.id, options: [] };
+                                                                                                    return { variableId: base.variableId, options: [...base.options, { id, value: v }] };
+                                                                                                });
+                                                                                                target.value = '';
+                                                                                            }
+                                                                                        }} />
+                                                                                        <Button type="button" variant="secondary" onClick={(e) => {
+                                                                                            const wrapper = (e.currentTarget.previousSibling as HTMLInputElement);
+                                                                                            if (!wrapper || !(wrapper as any).value) return;
+                                                                                            const v = String((wrapper as any).value).trim();
+                                                                                            if (!v) return;
+                                                                                            const id = generateId();
+                                                                                            upsertUserVarSelectOptions(imp.id, (curr) => {
+                                                                                                const base = curr || { variableId: imp.id, options: [] };
+                                                                                                return { variableId: base.variableId, options: [...base.options, { id, value: v }] };
+                                                                                            });
+                                                                                            (wrapper as any).value = '';
+                                                                                        }}>Add</Button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })()}
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     {imp.description && (
                                                         <p className="text-xs text-muted-foreground">{imp.description}</p>
                                                     )}
                                                     {imp.type === 'select' ? (
-                                                        <select
-                                                            id={variableName}
-                                                            className="w-full border rounded-md p-2 bg-background"
-                                                            value={variableValues[variableName] || ''}
-                                                            onChange={(e) => handleVariableChange(variableName, e.target.value)}
-                                                        >
-                                                            <option value="">Select...</option>
-                                                            {(imp.options || []).map((opt) => (
-                                                                <option key={opt} value={opt}>{opt}</option>
-                                                            ))}
-                                                        </select>
+                                                        <div className="space-y-2">
+                                                            <select
+                                                                id={variableName}
+                                                                className="w-full border rounded-md p-2 bg-background"
+                                                                value={variableValues[variableName] || ''}
+                                                                onChange={(e) => handleVariableChange(variableName, e.target.value)}
+                                                            >
+                                                                <option value="">Select...</option>
+                                                                {(() => {
+                                                                    const u = getUserSelectOptionsForVar(imp.id);
+                                                                    const userOpts = (u?.options || []).map((o: { id: string; value: string }) => o.value);
+                                                                    const all = Array.from(new Set([...(imp.options || []), ...userOpts]));
+                                                                    return all.map((opt) => (
+                                                                        <option key={opt} value={opt}>{opt}</option>
+                                                                    ));
+                                                                })()}
+                                                            </select>
+                                                        </div>
                                                     ) : imp.type === 'image' ? (
                                                         <div className="space-y-2">
                                                             <div className="flex items-center gap-2">
