@@ -1,4 +1,4 @@
-export type KMLFieldType = 
+export type KMLFieldType =
   | 'municipality'
   | 'plot_number'
   | 'plot_area'
@@ -33,7 +33,7 @@ export interface TemplateSection {
   order: number;
 }
 
-export type ImportedFieldType = 'text' | 'kml' | 'image' | 'select' | 'calculated';
+export type ImportedFieldType = 'text' | 'kml' | 'image' | 'select' | 'date' | 'calculated';
 
 export interface ImportedVariable {
   id: string;
@@ -90,7 +90,7 @@ export interface KMLFieldDefinition {
   name: string;
   type: 'string' | 'number' | 'date' | 'currency';
   kmlField: KMLFieldType;
-} 
+}
 
 export interface VariableGroup {
   id: string;

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X } from "lucide-react";
+import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X, Calendar as CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import ImageEditor from "@/components/image-editor";
@@ -1053,6 +1053,34 @@ export default function FillTemplatePage() {
                                                             required={imp.isRequired}
                                                             rows={3}
                                                         />
+                                                    ) : (imp as any).type === 'date' ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <Input
+                                                                id={variableName}
+                                                                type="date"
+                                                                value={variableValues[variableName] || ''}
+                                                                onChange={(e) => handleVariableChange(variableName, e.target.value)}
+                                                                required={imp.isRequired}
+                                                                placeholder="DD/MM/YYYY"
+                                                            />
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="icon"
+                                                                aria-label="Pick date"
+                                                                onClick={() => {
+                                                                    const el = document.getElementById(variableName) as HTMLInputElement | null;
+                                                                    if (!el) return;
+                                                                    try {
+                                                                        const anyEl = el as any;
+                                                                        if (typeof anyEl.showPicker === 'function') anyEl.showPicker();
+                                                                        else { el.focus(); el.click(); }
+                                                                    } catch { el.focus(); }
+                                                                }}
+                                                            >
+                                                                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                                                            </Button>
+                                                        </div>
                                                     ) : (
                                                         <Input
                                                             id={variableName}
@@ -1092,13 +1120,32 @@ export default function FillTemplatePage() {
                                                     <p className="text-xs text-muted-foreground">{(cb as any).description}</p>
                                                 )}
                                                 {variableType === 'date' ? (
-                                                    <Input
-                                                        id={variableName}
-                                                        type="date"
-                                                        value={variableValues[variableName] || ''}
-                                                        onChange={(e) => handleVariableChange(variableName, e.target.value)}
-                                                        required={(cb as any).isRequired}
-                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                        <Input
+                                                            id={variableName}
+                                                            type="date"
+                                                            value={variableValues[variableName] || ''}
+                                                            onChange={(e) => handleVariableChange(variableName, e.target.value)}
+                                                            required={(cb as any).isRequired}
+                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="icon"
+                                                            aria-label="Pick date"
+                                                            onClick={() => {
+                                                                const el = document.getElementById(variableName) as HTMLInputElement | null;
+                                                                if (!el) return;
+                                                                try {
+                                                                    const anyEl = el as any;
+                                                                    if (typeof anyEl.showPicker === 'function') anyEl.showPicker();
+                                                                    else { el.focus(); el.click(); }
+                                                                } catch { el.focus(); }
+                                                            }}
+                                                        >
+                                                            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                                                        </Button>
+                                                    </div>
                                                 ) : variableType === 'currency' || variableType === 'number' ? (
                                                     <Input
                                                         id={variableName}

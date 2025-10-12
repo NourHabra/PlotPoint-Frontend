@@ -22,7 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { templateApi, ApiError } from "@/lib/api";
 import { KML_FIELD_OPTIONS } from "@/lib/kml-constants";
 
-type FieldType = "text" | "kml" | "image" | "select";
+type FieldType = "text" | "kml" | "image" | "select" | "date";
 
 interface VariableDef {
     id: string;
@@ -774,6 +774,7 @@ export default function ImportTemplatePage() {
                                                     <SelectItem value="kml">KML Value</SelectItem>
                                                     <SelectItem value="image">Image</SelectItem>
                                                     <SelectItem value="select">Dropdown</SelectItem>
+                                                    <SelectItem value="date">Date</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
