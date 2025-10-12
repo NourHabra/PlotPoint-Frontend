@@ -496,7 +496,7 @@ export default function FillTemplatePage() {
         try {
             setLoading(true);
             const id = (selectedTemplate._id || (selectedTemplate as any).id) as string;
-            const blob = await templateApi.generate(id, variableValues, 'pdf');
+            const blob = await templateApi.generate(id, variableValues, 'pdf', selectedTemplate?.requiresKml ? kmlData : undefined);
             setPdfBlob(blob);
             if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
             const url = URL.createObjectURL(blob);

@@ -156,12 +156,12 @@ export const templateApi = {
   },
 
   // Generate report
-  generate: async (id: string, values: Record<string, any>, output: 'docx' | 'pdf') => {
+  generate: async (id: string, values: Record<string, any>, output: 'docx' | 'pdf', kmlData?: Record<string, any>) => {
     const url = `${API_BASE_URL}/templates/${id}/generate`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values, output }),
+      body: JSON.stringify({ values, output, ...(kmlData ? { kmlData } : {}) }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
