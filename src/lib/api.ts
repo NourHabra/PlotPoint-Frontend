@@ -110,6 +110,38 @@ export const templateApi = {
     return res.json();
   },
 
+  // Analyze a tokenized DOCX to extract variables and media
+  analyzeDocx: async (file: File) => {
+    const url = `${API_BASE_URL}/templates/analyze-docx`;
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(url, { method: 'POST', body: form });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, data.message ?? 'Analyze failed');
+    }
+    return res.json() as Promise<{
+      uploadedPath: string;
+      variables: Array<{ id: string; name: string }>;
+      media: Array<{ target: string; fileName?: string; extent?: { cx: number; cy: number } }>;
+    }>;
+  },
+
+  // Finalize import using an already tokenized DOCX stored on the server
+  finalizeImport: async (payload: {
+    name: string;
+    description?: string;
+    requiresKml?: boolean;
+    variableGroups?: Array<{ id: string; name: string; description?: string; order?: number }>;
+    variables: any[];
+    sourceDocxPath: string;
+  }) => {
+    return apiRequest(`/templates/finalize-import`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // Upload an image for image variables
   uploadImage: async (file: File) => {
     const url = `${API_BASE_URL}/uploads/image`;

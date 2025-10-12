@@ -48,11 +48,14 @@ function generateId() {
 export default function ImportTemplatePage() {
     const router = useRouter();
     const [step, setStep] = useState<1 | 2 | 3>(1);
+    const [isTokenized, setIsTokenized] = useState(false);
     const [templateName, setTemplateName] = useState("");
     const [templateDescription, setTemplateDescription] = useState("");
     const [requiresKml, setRequiresKml] = useState(false);
     const [docFile, setDocFile] = useState<File | null>(null);
     const [docArrayBuffer, setDocArrayBuffer] = useState<ArrayBuffer | null>(null);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [serverUploadedPath, setServerUploadedPath] = useState<string>("");
     const [htmlPreview, setHtmlPreview] = useState<string>("");
     const [devMammothHtml, setDevMammothHtml] = useState<string>("");
     const [devMammothMessages, setDevMammothMessages] = useState<any[]>([]);
@@ -82,10 +85,38 @@ export default function ImportTemplatePage() {
         setDraftVar(null);
         setHtmlPreview("");
         setPendingSelectionText("");
+        setServerUploadedPath("");
         if (!file) return;
         try {
             const ab = await file.arrayBuffer();
             setDocArrayBuffer(ab);
+            if (isTokenized) {
+                // Analyze tokens on server
+                try {
+                    setAnalyzing(true);
+                    const result = await templateApi.analyzeDocx(file);
+                    setServerUploadedPath(result.uploadedPath);
+                    // Seed variables from tokens (default type=text)
+                    const seeded: VariableDef[] = (result.variables || []).map((t) => ({
+                        id: generateId(),
+                        name: t.name,
+                        type: "text",
+                        sourceText: `{{${t.name}}}`,
+                        isRequired: false,
+                        textTemplates: [],
+                    }));
+                    setVariables(seeded);
+                    toast.success(`Found ${seeded.length} variables in tokenized file`);
+                } catch (e) {
+                    if (e instanceof ApiError) {
+                        toast.error(e.message);
+                    } else {
+                        toast.error("Analyze failed");
+                    }
+                } finally {
+                    setAnalyzing(false);
+                }
+            }
         } catch (e) {
             toast.error("Failed to read file");
         }
@@ -318,6 +349,10 @@ export default function ImportTemplatePage() {
 
     // Wrap current text selection with a span marker
     const markSelectionAsVariable = () => {
+        if (isTokenized) {
+            toast("Marking is disabled in tokenized mode");
+            return;
+        }
         const container = previewRef.current;
         if (!container) return;
         const selection = window.getSelection();
@@ -394,16 +429,11 @@ export default function ImportTemplatePage() {
     };
 
     const updateActiveVar = (patch: Partial<VariableDef>) => {
-        // Normalize: if switching to KML or changing kmlField, auto-derive name from kmlField
+        // Normalize: for KML variables, ensure isRequired is false, but do not change name
         const normalize = (original: VariableDef | null, p: Partial<VariableDef>): Partial<VariableDef> => {
             const next: Partial<VariableDef> = { ...p };
             const targetType = (p.type ?? original?.type) as FieldType | undefined;
             if (targetType === "kml") {
-                const kmlField = (p.kmlField ?? original?.kmlField) as (typeof KML_FIELD_OPTIONS)[number]["value"] | undefined;
-                if (kmlField && !p.name) {
-                    next.name = kmlField;
-                }
-                // KML values are auto-populated, not user-entered → never required
                 next.isRequired = false;
             }
             return next;
@@ -451,15 +481,9 @@ export default function ImportTemplatePage() {
             toast("Enter a variable name");
             return;
         }
-        // Ensure KML name mirrors selected field
-        const toSave: VariableDef = draftVar.type === "kml" && draftVar.kmlField
-            ? { ...draftVar, name: draftVar.kmlField }
-            : draftVar;
         // Force required=false for KML values
-        if (toSave.type === "kml") {
-            (toSave as any).isRequired = false;
-        }
-        setVariables(prev => [...prev, toSave]);
+        const nextVar: VariableDef = draftVar.type === "kml" ? { ...draftVar, isRequired: false } as any : draftVar;
+        setVariables(prev => [...prev, nextVar]);
         // Reset variable details pane to empty state after saving
         setActiveVarId(null);
         setDraftVar(null);
@@ -500,7 +524,22 @@ export default function ImportTemplatePage() {
         }
         try {
             setIsImporting(true);
-            await templateApi.importDocx(templateName, templateDescription, docFile, variables, requiresKml, variableGroups);
+            if (isTokenized) {
+                if (!serverUploadedPath) {
+                    toast("Analyze the tokenized DOCX first");
+                    return;
+                }
+                await templateApi.finalizeImport({
+                    name: templateName,
+                    description: templateDescription,
+                    requiresKml,
+                    variableGroups,
+                    variables,
+                    sourceDocxPath: serverUploadedPath,
+                });
+            } else {
+                await templateApi.importDocx(templateName, templateDescription, docFile, variables, requiresKml, variableGroups);
+            }
             toast.success("Template imported successfully");
             router.push("/dashboard/templates");
         } catch (error) {
@@ -518,7 +557,7 @@ export default function ImportTemplatePage() {
         <div className="@container/main flex flex-col gap-4 md:gap-6">
             <div className="flex flex-col gap-2">
                 <h1 className="text-3xl font-bold tracking-tight">Create New Template</h1>
-                <p className="text-muted-foreground">Upload a .docx, highlight text, and assign variable type/name.</p>
+                <p className="text-muted-foreground">{isTokenized ? "Upload an already tokenized .docx ({{Variable Name}}) and configure variables." : "Upload a .docx, highlight text, and assign variable type/name."}</p>
             </div>
 
             {step === 1 && (
@@ -526,7 +565,7 @@ export default function ImportTemplatePage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Template details</CardTitle>
-                            <CardDescription>Name your template, add a description, and upload the Word file</CardDescription>
+                            <CardDescription>Name your template, choose mode, and upload the Word file</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -539,6 +578,10 @@ export default function ImportTemplatePage() {
                                     <Input id="template-description" placeholder="What is this template for?" value={templateDescription} onChange={(e) => setTemplateDescription(e.target.value)} />
                                 </div>
                                 <div className="flex items-center gap-2 pt-6">
+                                    <Checkbox id="is-tokenized" checked={isTokenized} onCheckedChange={(v) => setIsTokenized(Boolean(v))} />
+                                    <Label htmlFor="is-tokenized">Already tokenized (uses {'{{'} Variable Name {'}}'})</Label>
+                                </div>
+                                <div className="flex items-center gap-2 pt-6">
                                     <Checkbox id="requires-kml" checked={requiresKml} onCheckedChange={(v) => setRequiresKml(Boolean(v))} />
                                     <Label htmlFor="requires-kml">This template requires a KML file upload</Label>
                                 </div>
@@ -547,6 +590,12 @@ export default function ImportTemplatePage() {
                                     <div className="flex gap-2">
                                         <Input id="docx" type="file" accept=".docx" onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)} />
                                     </div>
+                                    {isTokenized && analyzing && (
+                                        <p className="text-xs text-muted-foreground">Analyzing tokens…</p>
+                                    )}
+                                    {isTokenized && serverUploadedPath && (
+                                        <p className="text-xs text-muted-foreground">Analyzed and uploaded to server</p>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex justify-end">
@@ -564,16 +613,39 @@ export default function ImportTemplatePage() {
                         <Card>
                             <CardHeader>
                                 <CardTitle>Template file</CardTitle>
-                                <CardDescription>Preview and mark variables from your uploaded document</CardDescription>
+                                <CardDescription>{isTokenized ? "Preview your tokenized document. Variables were auto-extracted." : "Preview and mark variables from your uploaded document"}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="flex gap-2">
-                                    <Button type="button" variant="secondary" onClick={markSelectionAsVariable} disabled={!htmlPreview}>
+                                    <Button type="button" variant="secondary" onClick={markSelectionAsVariable} disabled={!htmlPreview || isTokenized}>
                                         <Highlighter className="h-4 w-4 mr-2" /> Mark selection
                                     </Button>
                                     <Button type="button" variant="outline" onClick={() => setStep(1)}>
                                         Back
                                     </Button>
+                                    {isTokenized && docFile && (
+                                        <Button type="button" variant="outline" disabled={analyzing} onClick={async () => {
+                                            try {
+                                                setAnalyzing(true);
+                                                const result = await templateApi.analyzeDocx(docFile);
+                                                setServerUploadedPath(result.uploadedPath);
+                                                const seeded: VariableDef[] = (result.variables || []).map((t) => ({
+                                                    id: generateId(),
+                                                    name: t.name,
+                                                    type: "text",
+                                                    sourceText: `{{${t.name}}}`,
+                                                    isRequired: false,
+                                                    textTemplates: [],
+                                                }));
+                                                setVariables(seeded);
+                                                toast.success(`Found ${seeded.length} variables`);
+                                            } catch (e) {
+                                                if (e instanceof ApiError) toast.error(e.message); else toast.error("Analyze failed");
+                                            } finally {
+                                                setAnalyzing(false);
+                                            }
+                                        }}>Re-analyze</Button>
+                                    )}
                                 </div>
                                 <Separator />
                                 <Tabs defaultValue="preview" className="w-full">
@@ -711,7 +783,7 @@ export default function ImportTemplatePage() {
                                                 <Label>KML field</Label>
                                                 <Select
                                                     value={(draftVar ? draftVar.kmlField : activeVariable!.kmlField)}
-                                                    onValueChange={(v) => updateActiveVar({ kmlField: v as any, name: v as any })}
+                                                    onValueChange={(v) => updateActiveVar({ kmlField: v as any })}
                                                 >
                                                     <SelectTrigger><SelectValue placeholder="Choose KML field" /></SelectTrigger>
                                                     <SelectContent>
@@ -722,14 +794,12 @@ export default function ImportTemplatePage() {
                                                 </Select>
                                             </div>
                                         )}
-                                        {/* 3. Variable name (hidden when KML is selected) */}
-                                        {((draftVar ? draftVar.type : activeVariable!.type) !== 'kml') && (
-                                            <div className="space-y-2">
-                                                <Label htmlFor="var-name">Variable name</Label>
-                                                <Input id="var-name" placeholder="e.g., owner_name" value={(draftVar ? draftVar.name : activeVariable!.name)}
-                                                    onChange={(e) => updateActiveVar({ name: e.target.value })} />
-                                            </div>
-                                        )}
+                                        {/* 3. Variable name (always visible; not auto-changed for KML) */}
+                                        <div className="space-y-2">
+                                            <Label htmlFor="var-name">Variable name</Label>
+                                            <Input id="var-name" placeholder="e.g., owner_name" value={(draftVar ? draftVar.name : activeVariable!.name)}
+                                                onChange={(e) => updateActiveVar({ name: e.target.value })} />
+                                        </div>
                                         {/* 3b. Variable group */}
                                         <div className="space-y-2">
                                             <Label>Section</Label>
@@ -790,6 +860,11 @@ export default function ImportTemplatePage() {
                                             <Label htmlFor="var-desc">Variable description (optional)</Label>
                                             <Input id="var-desc" placeholder="Short helper text for this variable" value={(draftVar ? (draftVar.description ?? '') : (activeVariable!.description ?? ''))}
                                                 onChange={(e) => updateActiveVar({ description: e.target.value as any })} />
+                                        </div>
+                                        {/* 4b. Required */}
+                                        <div className="flex items-center gap-2">
+                                            <Checkbox id="var-required" checked={!!(draftVar ? draftVar.isRequired : activeVariable!.isRequired)} onCheckedChange={(v) => updateActiveVar({ isRequired: Boolean(v) })} />
+                                            <Label htmlFor="var-required">Required</Label>
                                         </div>
                                         {/* 5. Extras per type */}
                                         {(draftVar ? draftVar.type : activeVariable!.type) === "kml" && null}
