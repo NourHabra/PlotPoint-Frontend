@@ -197,7 +197,7 @@ export default function ReportsPage() {
                                                     status === 'complete' ? 'bg-emerald-500' :
                                                         status === 'partial' ? 'bg-yellow-500' :
                                                             // status === 'empty'
-                                                            hasItems ? 'bg-red-500' : 'bg-emerald-500';
+                                                            hasItems ? 'bg-red-500' : 'bg-gray-400';
                                                 return <span className={`inline-block w-2.5 h-2.5 rounded-full ${color}`} title={status} />;
                                             })()}
                                             <span className="inline-flex items-center rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-[10px] font-medium">
