@@ -2,16 +2,15 @@
 
 import { ChevronUp, ChevronDown, Trash2, Type, Hash, MapPin } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-import { ContentBlock, KMLFieldType } from "@/types/template";
+import { Textarea } from "@/components/ui/textarea";
 import { KML_FIELD_OPTIONS, getKMLFieldLabel, getKMLFieldType } from "@/lib/kml-constants";
+import { ContentBlock, KMLFieldType } from "@/types/template";
 
 interface ContentBlockEditorProps {
     block: ContentBlock;
@@ -151,43 +150,7 @@ export function ContentBlockEditor({
                                 </Select>
                             </div>
 
-                            {/* Text Templates (only for text variables) */}
-                            {(block.variableType || 'string') === 'string' && (
-                                <div className="space-y-2">
-                                    <Label>Text Templates</Label>
-                                    <Input
-                                        placeholder="Press Enter to add"
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                const target = e.target as HTMLInputElement;
-                                                const v = target.value.trim();
-                                                if (!v) return;
-                                                const next = Array.from(new Set([...(block.textTemplates || []), v]));
-                                                onUpdate({ textTemplates: next });
-                                                target.value = '';
-                                            }
-                                        }}
-                                    />
-                                    <div className="flex flex-wrap gap-2">
-                                        {(block.textTemplates || []).map((tt) => (
-                                            <Badge key={tt} variant="secondary" className="gap-1">
-                                                {tt}
-                                                <button
-                                                    className="ml-1"
-                                                    onClick={() => {
-                                                        const next = (block.textTemplates || []).filter((x) => x !== tt);
-                                                        onUpdate({ textTemplates: next });
-                                                    }}
-                                                    aria-label={`Remove ${tt}`}
-                                                >
-                                                    ×
-                                                </button>
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                            {/* Admin text templates UI removed */}
                         </div>
                     ) : (
                         /* KML Variable Block Editor */
@@ -220,4 +183,4 @@ export function ContentBlockEditor({
             </CardContent>
         </Card>
     );
-} 
+}

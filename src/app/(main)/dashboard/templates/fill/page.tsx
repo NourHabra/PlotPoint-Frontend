@@ -4,9 +4,10 @@ import { useState, useEffect, useRef } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X } from "lucide-react";
+import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X, Calendar as CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import AppendixManager from "@/components/appendix/appendix-manager";
 import ImageEditor from "@/components/image-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ export default function FillTemplatePage() {
     const [newTplForVarId, setNewTplForVarId] = useState<string | null>(null);
     const [newTplForVarName, setNewTplForVarName] = useState<string>("");
     const [newTplText, setNewTplText] = useState<string>("");
+    const [appendixPreviewItems, setAppendixPreviewItems] = useState<any[]>([]);
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
@@ -273,6 +275,20 @@ export default function FillTemplatePage() {
         }
     };
 
+    useEffect(() => {
+        // Load appendix list for preview when in preview step
+        const shouldPreview = selectedTemplate && (selectedTemplate.requiresKml ? step === 4 : step === 3);
+        if (!reportId || !shouldPreview) return;
+        (async () => {
+            try {
+                const list = await (reportApi.listAppendix as any)(reportId);
+                setAppendixPreviewItems(Array.isArray(list) ? list : []);
+            } catch (_) {
+                setAppendixPreviewItems([]);
+            }
+        })();
+    }, [reportId, step, selectedTemplate]);
+
     const generateId = () => Math.random().toString(36).slice(2);
 
     const loadUserTemplateFor = async (tplId: string) => {
@@ -301,6 +317,11 @@ export default function FillTemplatePage() {
         return arr.find(v => v.variableId === variableId) || null;
     };
 
+    const getUserSelectOptionsForVar = (variableId: string) => {
+        const arr = (userTemplate as any)?.variableSelectOptions || [];
+        return arr.find((v: any) => v.variableId === variableId) || null;
+    };
+
     const upsertUserVarSnippets = async (variableId: string, updater: (curr: { variableId: string; snippets: Array<{ id: string; text: string }> } | null) => { variableId: string; snippets: Array<{ id: string; text: string }> }) => {
         if (!userTemplate) return;
         const current = getUserSnippetsForVar(variableId);
@@ -314,6 +335,21 @@ export default function FillTemplatePage() {
             // revert on failure
             setUserTemplate(userTemplate);
             toast.error('Failed to save templates');
+        }
+    };
+
+    const upsertUserVarSelectOptions = async (variableId: string, updater: (curr: { variableId: string; options: Array<{ id: string; value: string }> } | null) => { variableId: string; options: Array<{ id: string; value: string }> }) => {
+        if (!userTemplate) return;
+        const current = getUserSelectOptionsForVar(variableId);
+        const nextEntry = updater(current ? { variableId: current.variableId, options: [...current.options] } : null);
+        const others = ((userTemplate as any).variableSelectOptions || []).filter((v: any) => v.variableId !== variableId);
+        const updated = { ...(userTemplate as any), variableSelectOptions: [...others, nextEntry] } as UserTemplateDto & { variableSelectOptions: Array<{ variableId: string; options: Array<{ id: string; value: string }> }> };
+        setUserTemplate(updated as any);
+        try {
+            await userTemplateApi.update(userTemplate._id, { variableSelectOptions: (updated as any).variableSelectOptions });
+        } catch (_) {
+            setUserTemplate(userTemplate);
+            toast.error('Failed to save dropdown options');
         }
     };
 
@@ -472,15 +508,41 @@ export default function FillTemplatePage() {
     };
 
     const refreshPdfPreview = async () => {
-        if (!selectedTemplate) return;
         try {
             setLoading(true);
-            const id = (selectedTemplate._id || (selectedTemplate as any).id) as string;
-            const blob = await templateApi.generate(id, variableValues, 'pdf');
-            setPdfBlob(blob);
-            if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
-            const url = URL.createObjectURL(blob);
-            setPdfPreviewUrl(url);
+            if (reportId) {
+                // Use report-based preview to include appendix items
+                const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+                const url = `${base}/reports/${encodeURIComponent(reportId)}/preview-pdf`;
+                // Attach Authorization header
+                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                try {
+                    const raw = localStorage.getItem('auth');
+                    if (raw) {
+                        const a = JSON.parse(raw);
+                        if (a?.token) headers['Authorization'] = `Bearer ${a.token}`;
+                    }
+                } catch { }
+                const res = await fetch(url, { method: 'POST', headers });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new ApiError(res.status, data.message || 'Preview failed');
+                }
+                const blob = await res.blob();
+                setPdfBlob(blob);
+                if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+                const obj = URL.createObjectURL(blob);
+                setPdfPreviewUrl(obj);
+            } else {
+                // Fallback: template-based preview (no appendix)
+                if (!selectedTemplate) return;
+                const id = (selectedTemplate._id || (selectedTemplate as any).id) as string;
+                const blob = await templateApi.generate(id, variableValues, 'pdf', selectedTemplate?.requiresKml ? kmlData : undefined);
+                setPdfBlob(blob);
+                if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+                const obj = URL.createObjectURL(blob);
+                setPdfPreviewUrl(obj);
+            }
         } catch (error) {
             if (error instanceof ApiError) toast.error(error.message);
             else toast.error('PDF preview failed');
@@ -871,24 +933,7 @@ export default function FillTemplatePage() {
                                                             {imp.isRequired && <span className="text-destructive ml-1">*</span>}
                                                         </Label>
                                                         <div className="flex items-center gap-2">
-                                                            {(imp.type === 'text' && (imp.textTemplates ?? []).length > 0) && (
-                                                                <DropdownMenu>
-                                                                    <DropdownMenuTrigger asChild>
-                                                                        <Button variant="outline" size="sm" type="button">
-                                                                            Insert from template
-                                                                        </Button>
-                                                                    </DropdownMenuTrigger>
-                                                                    <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto p-2 space-y-2 w-[600px]">
-                                                                        {(imp.textTemplates ?? []).map((tt, idx) => (
-                                                                            <DropdownMenuItem key={`${tt}-${idx}`} onClick={() => handleVariableChange(variableName, tt)} className="p-0 hover:bg-transparent focus:bg-transparent">
-                                                                                <div className="w-full border rounded-md bg-card p-3 shadow-sm leading-relaxed whitespace-pre-wrap break-words text-sm">
-                                                                                    <span className="mr-2 text-muted-foreground">{idx + 1}.</span>{tt}
-                                                                                </div>
-                                                                            </DropdownMenuItem>
-                                                                        ))}
-                                                                    </DropdownMenuContent>
-                                                                </DropdownMenu>
-                                                            )}
+                                                            {/* Admin 'Insert from template' removed; keep only My Templates */}
                                                             {imp.type === 'text' && (
                                                                 <DropdownMenu>
                                                                     <DropdownMenuTrigger asChild>
@@ -928,23 +973,93 @@ export default function FillTemplatePage() {
                                                                     </DropdownMenuContent>
                                                                 </DropdownMenu>
                                                             )}
+                                                            {imp.type === 'select' && (
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="outline" size="sm" type="button">My Dropdowns</Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end" className="p-2 space-y-2 w-[360px]">
+                                                                        {(() => {
+                                                                            const u = getUserSelectOptionsForVar(imp.id);
+                                                                            const items = u?.options || [];
+                                                                            return (
+                                                                                <div className="max-w-[320px]">
+                                                                                    {items.length === 0 && (
+                                                                                        <div className="px-3 py-2 text-sm text-muted-foreground">No items yet</div>
+                                                                                    )}
+                                                                                    {items.map((opt: { id: string; value: string }) => (
+                                                                                        <div key={opt.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-muted">
+                                                                                            <div className="text-sm truncate">{opt.value}</div>
+                                                                                            <button className="text-xs text-destructive" onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                upsertUserVarSelectOptions(imp.id, (curr) => {
+                                                                                                    const base = curr || { variableId: imp.id, options: [] };
+                                                                                                    return { variableId: base.variableId, options: base.options.filter((o: { id: string; value: string }) => o.id !== opt.id) };
+                                                                                                });
+                                                                                            }}>
+                                                                                                <Trash2 className="h-4 w-4" />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                    <div className="h-px bg-border my-1" />
+                                                                                    <div className="flex gap-2">
+                                                                                        <Input placeholder="New item" onKeyDown={(e) => {
+                                                                                            if (e.key === 'Enter') {
+                                                                                                e.preventDefault();
+                                                                                                const target = e.target as HTMLInputElement;
+                                                                                                const v = (target.value || '').trim();
+                                                                                                if (!v) return;
+                                                                                                const id = generateId();
+                                                                                                upsertUserVarSelectOptions(imp.id, (curr) => {
+                                                                                                    const base = curr || { variableId: imp.id, options: [] };
+                                                                                                    return { variableId: base.variableId, options: [...base.options, { id, value: v }] };
+                                                                                                });
+                                                                                                target.value = '';
+                                                                                            }
+                                                                                        }} />
+                                                                                        <Button type="button" variant="secondary" onClick={(e) => {
+                                                                                            const wrapper = (e.currentTarget.previousSibling as HTMLInputElement);
+                                                                                            if (!wrapper || !(wrapper as any).value) return;
+                                                                                            const v = String((wrapper as any).value).trim();
+                                                                                            if (!v) return;
+                                                                                            const id = generateId();
+                                                                                            upsertUserVarSelectOptions(imp.id, (curr) => {
+                                                                                                const base = curr || { variableId: imp.id, options: [] };
+                                                                                                return { variableId: base.variableId, options: [...base.options, { id, value: v }] };
+                                                                                            });
+                                                                                            (wrapper as any).value = '';
+                                                                                        }}>Add</Button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })()}
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     {imp.description && (
                                                         <p className="text-xs text-muted-foreground">{imp.description}</p>
                                                     )}
                                                     {imp.type === 'select' ? (
-                                                        <select
-                                                            id={variableName}
-                                                            className="w-full border rounded-md p-2 bg-background"
-                                                            value={variableValues[variableName] || ''}
-                                                            onChange={(e) => handleVariableChange(variableName, e.target.value)}
-                                                        >
-                                                            <option value="">Select...</option>
-                                                            {(imp.options || []).map((opt) => (
-                                                                <option key={opt} value={opt}>{opt}</option>
-                                                            ))}
-                                                        </select>
+                                                        <div className="space-y-2">
+                                                            <select
+                                                                id={variableName}
+                                                                className="w-full border rounded-md p-2 bg-background"
+                                                                value={variableValues[variableName] || ''}
+                                                                onChange={(e) => handleVariableChange(variableName, e.target.value)}
+                                                            >
+                                                                <option value="">Select...</option>
+                                                                {(() => {
+                                                                    const u = getUserSelectOptionsForVar(imp.id);
+                                                                    const userOpts = (u?.options || []).map((o: { id: string; value: string }) => o.value);
+                                                                    const all = Array.from(new Set([...(imp.options || []), ...userOpts]));
+                                                                    return all.map((opt) => (
+                                                                        <option key={opt} value={opt}>{opt}</option>
+                                                                    ));
+                                                                })()}
+                                                            </select>
+                                                        </div>
                                                     ) : imp.type === 'image' ? (
                                                         <div className="space-y-2">
                                                             <div className="flex items-center gap-2">
@@ -970,6 +1085,43 @@ export default function FillTemplatePage() {
                                                             {imp.description && (
                                                                 <p className="text-xs text-muted-foreground">You can upload directly or click Edit image to crop, draw, or pixelate before saving.</p>
                                                             )}
+                                                        </div>
+                                                    ) : imp.type === 'text' ? (
+                                                        <Textarea
+                                                            id={variableName}
+                                                            className="resize-y"
+                                                            value={variableValues[variableName] || ''}
+                                                            onChange={(e) => handleVariableChange(variableName, e.target.value)}
+                                                            required={imp.isRequired}
+                                                            rows={3}
+                                                        />
+                                                    ) : (imp as any).type === 'date' ? (
+                                                        <div className="flex items-center gap-2">
+                                                            <Input
+                                                                id={variableName}
+                                                                type="date"
+                                                                value={variableValues[variableName] || ''}
+                                                                onChange={(e) => handleVariableChange(variableName, e.target.value)}
+                                                                required={imp.isRequired}
+                                                                placeholder="DD/MM/YYYY"
+                                                            />
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="icon"
+                                                                aria-label="Pick date"
+                                                                onClick={() => {
+                                                                    const el = document.getElementById(variableName) as HTMLInputElement | null;
+                                                                    if (!el) return;
+                                                                    try {
+                                                                        const anyEl = el as any;
+                                                                        if (typeof anyEl.showPicker === 'function') anyEl.showPicker();
+                                                                        else { el.focus(); el.click(); }
+                                                                    } catch { el.focus(); }
+                                                                }}
+                                                            >
+                                                                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                                                            </Button>
                                                         </div>
                                                     ) : (
                                                         <Input
@@ -1004,36 +1156,38 @@ export default function FillTemplatePage() {
                                                         {label}
                                                         {(cb as any).isRequired && <span className="text-destructive ml-1">*</span>}
                                                     </Label>
-                                                    {Array.isArray((cb as any).textTemplates) && (cb as any).textTemplates.length > 0 && (
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild>
-                                                                <Button variant="outline" size="sm" type="button">
-                                                                    Insert from template
-                                                                </Button>
-                                                            </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end" className="max-h-64 overflow-y-auto p-2 space-y-2 w-[600px]">
-                                                                {(cb as any).textTemplates.map((tt: string, idx: number) => (
-                                                                    <DropdownMenuItem key={`${tt}-${idx}`} onClick={() => handleVariableChange(variableName, tt)} className="p-0 hover:bg-transparent focus:bg-transparent">
-                                                                        <div className="w-full border rounded-md bg-card p-3 shadow-sm leading-relaxed whitespace-pre-wrap break-words text-sm">
-                                                                            <span className="mr-2 text-muted-foreground">{idx + 1}.</span>{tt}
-                                                                        </div>
-                                                                    </DropdownMenuItem>
-                                                                ))}
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
-                                                    )}
+                                                    {/* Admin 'Insert from template' removed */}
                                                 </div>
                                                 {(cb as any).description && (
                                                     <p className="text-xs text-muted-foreground">{(cb as any).description}</p>
                                                 )}
                                                 {variableType === 'date' ? (
-                                                    <Input
-                                                        id={variableName}
-                                                        type="date"
-                                                        value={variableValues[variableName] || ''}
-                                                        onChange={(e) => handleVariableChange(variableName, e.target.value)}
-                                                        required={(cb as any).isRequired}
-                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                        <Input
+                                                            id={variableName}
+                                                            type="date"
+                                                            value={variableValues[variableName] || ''}
+                                                            onChange={(e) => handleVariableChange(variableName, e.target.value)}
+                                                            required={(cb as any).isRequired}
+                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="icon"
+                                                            aria-label="Pick date"
+                                                            onClick={() => {
+                                                                const el = document.getElementById(variableName) as HTMLInputElement | null;
+                                                                if (!el) return;
+                                                                try {
+                                                                    const anyEl = el as any;
+                                                                    if (typeof anyEl.showPicker === 'function') anyEl.showPicker();
+                                                                    else { el.focus(); el.click(); }
+                                                                } catch { el.focus(); }
+                                                            }}
+                                                        >
+                                                            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                                                        </Button>
+                                                    </div>
                                                 ) : variableType === 'currency' || variableType === 'number' ? (
                                                     <Input
                                                         id={variableName}
@@ -1045,23 +1199,9 @@ export default function FillTemplatePage() {
                                                     />
                                                 ) : (
                                                     <div className="space-y-2">
-                                                        {Array.isArray((cb as any).textTemplates) && (cb as any).textTemplates.length > 0 && (
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger asChild>
-                                                                    <Button variant="secondary" size="sm" type="button">
-                                                                        Insert from template
-                                                                    </Button>
-                                                                </DropdownMenuTrigger>
-                                                                <DropdownMenuContent align="start" className="max-w-[600px]">
-                                                                    {(cb as any).textTemplates.map((tt: string) => (
-                                                                        <DropdownMenuItem key={tt} onClick={() => handleVariableChange(variableName, tt)} className="whitespace-pre-wrap break-words">
-                                                                            {tt}
-                                                                        </DropdownMenuItem>
-                                                                    ))}
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
-                                                        )}
+                                                        {/* Admin 'Insert from template' removed */}
                                                         <Textarea
+                                                            className="resize-y"
                                                             id={variableName}
                                                             value={variableValues[variableName] || ''}
                                                             onChange={(e) => handleVariableChange(variableName, e.target.value)}
@@ -1103,6 +1243,8 @@ export default function FillTemplatePage() {
                                 </div>
                             );
                         })()}
+                        {/* Appendix section */}
+                        <AppendixManager reportId={reportId} />
                         <div className="flex justify-end gap-2 pt-2">
                             <Button
                                 variant="outline"
@@ -1155,7 +1297,6 @@ export default function FillTemplatePage() {
                             </Button>
                         </div>
                     </div>
-                    {/* Checklist moved to Preview stage overlay */}
                 </div>
             )}
 
@@ -1355,14 +1496,47 @@ export default function FillTemplatePage() {
                                             </div>
                                         ))}
                                     </div>
+                                    {/* Appendix preview list */}
+                                    {appendixPreviewItems.length > 0 && (
+                                        <div className="mt-6">
+                                            <div className="text-sm font-medium mb-2">Appendix</div>
+                                            <ol className="space-y-2 list-decimal list-inside">
+                                                {appendixPreviewItems
+                                                    .slice()
+                                                    .sort((a: any, b: any) => (Number(a.order || 0) - Number(b.order || 0)))
+                                                    .map((it: any, idx: number) => (
+                                                        <li key={String(it._id)} className="flex items-center gap-3">
+                                                            <div className="w-12 h-12 bg-muted rounded overflow-hidden flex items-center justify-center">
+                                                                {(() => {
+                                                                    const url = (() => {
+                                                                        const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+                                                                        const path = it.thumbPath || it.originalPath;
+                                                                        if (!path) return '';
+                                                                        return path.startsWith('/') ? base + path : base + '/' + path;
+                                                                    })();
+                                                                    if (url) return (
+                                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                                        <img src={url} className="object-cover w-full h-full" alt={it.originalName || it.kind} />
+                                                                    );
+                                                                    return <div className="text-xs text-muted-foreground">No preview</div>;
+                                                                })()}
+                                                            </div>
+                                                            <div className="text-xs text-muted-foreground">
+                                                                {(it.originalName || (it.kind === 'pdf' ? 'PDF' : 'Image'))} {it.pageCount ? `(${it.pageCount} ${it.pageCount === 1 ? 'Page' : 'Pages'})` : ''}
+                                                            </div>
+                                                        </li>
+                                                    ))}
+                                            </ol>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </div>
                     </CardContent>
                 </Card>
             )}
-            {/* Global Checklist FAB + Sheet across stages */}
-            {selectedTemplate && userTemplate && (
+            {/* Global Checklist FAB + Sheet across stages (visible only when not in Draft) */}
+            {selectedTemplate && userTemplate && (reportStatus !== 'Draft') && (
                 <>
                     {!isChecklistOpen && (
                         <button

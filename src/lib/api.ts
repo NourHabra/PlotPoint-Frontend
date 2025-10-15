@@ -110,6 +110,38 @@ export const templateApi = {
     return res.json();
   },
 
+  // Analyze a tokenized DOCX to extract variables and media
+  analyzeDocx: async (file: File) => {
+    const url = `${API_BASE_URL}/templates/analyze-docx`;
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(url, { method: 'POST', body: form });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, data.message ?? 'Analyze failed');
+    }
+    return res.json() as Promise<{
+      uploadedPath: string;
+      variables: Array<{ id: string; name: string }>;
+      media: Array<{ target: string; fileName?: string; extent?: { cx: number; cy: number } }>;
+    }>;
+  },
+
+  // Finalize import using an already tokenized DOCX stored on the server
+  finalizeImport: async (payload: {
+    name: string;
+    description?: string;
+    requiresKml?: boolean;
+    variableGroups?: Array<{ id: string; name: string; description?: string; order?: number }>;
+    variables: any[];
+    sourceDocxPath: string;
+  }) => {
+    return apiRequest(`/templates/finalize-import`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // Upload an image for image variables
   uploadImage: async (file: File) => {
     const url = `${API_BASE_URL}/uploads/image`;
@@ -124,12 +156,12 @@ export const templateApi = {
   },
 
   // Generate report
-  generate: async (id: string, values: Record<string, any>, output: 'docx' | 'pdf') => {
+  generate: async (id: string, values: Record<string, any>, output: 'docx' | 'pdf', kmlData?: Record<string, any>) => {
     const url = `${API_BASE_URL}/templates/${id}/generate`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values, output }),
+      body: JSON.stringify({ values, output, ...(kmlData ? { kmlData } : {}) }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -221,6 +253,45 @@ export const reportApi = {
   },
 
   delete: (id: string) => apiRequest(`/reports/${id}`, { method: 'DELETE' }),
+
+  // Appendix endpoints
+  listAppendix: (reportId: string) => apiRequest(`/reports/${reportId}/appendix`),
+  uploadAppendix: async (reportId: string, files: File[]) => {
+    const url = `${API_BASE_URL}/reports/${encodeURIComponent(reportId)}/appendix/upload`;
+    const form = new FormData();
+    for (const f of files) form.append('files', f);
+    // Attach Authorization header
+    const authHeaders = (() => {
+      if (typeof window === 'undefined') return {} as Record<string, string>;
+      try {
+        const raw = localStorage.getItem('auth');
+        if (!raw) return {} as Record<string, string>;
+        const a = JSON.parse(raw);
+        if (a?.token) return { Authorization: `Bearer ${a.token}` } as Record<string, string>;
+        return {} as Record<string, string>;
+      } catch {
+        return {} as Record<string, string>;
+      }
+    })();
+    const res = await fetch(url, { method: 'POST', body: form, headers: authHeaders });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, data.message ?? 'Appendix upload failed');
+    }
+    return res.json();
+  },
+  reorderAppendix: (reportId: string, items: Array<{ itemId: string; order: number }>) =>
+    apiRequest(`/reports/${reportId}/appendix/order`, { method: 'PATCH', body: JSON.stringify(items) }),
+  deleteAppendixItem: (reportId: string, itemId: string) =>
+    apiRequest(`/reports/${reportId}/appendix/${itemId}`, { method: 'DELETE' }),
+};
+
+// Changelog API
+export const changelogApi = {
+  list: () => apiRequest('/changelog'),
+  create: (payload: { title: string; description: string; date: string }) => apiRequest('/changelog', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id: string, payload: Partial<{ title: string; description: string; date: string; disabled: boolean }>) => apiRequest(`/changelog/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  delete: (id: string) => apiRequest(`/changelog/${id}`, { method: 'DELETE' }),
 };
 
 // Dashboard API
@@ -251,6 +322,10 @@ export interface UserTemplateDto {
     variableId: string;
     snippets: Array<{ id: string; text: string }>;
   }>;
+  variableSelectOptions?: Array<{
+    variableId: string;
+    options: Array<{ id: string; value: string }>;
+  }>;
   checklist: Array<{ id: string; label: string; required?: boolean; order: number }>;
   createdAt?: string;
   updatedAt?: string;
@@ -258,10 +333,10 @@ export interface UserTemplateDto {
 
 export const userTemplateApi = {
   getForTemplate: (templateId: string) => apiRequest<UserTemplateDto>(`/user-templates?templateId=${encodeURIComponent(templateId)}`),
-  createForTemplate: (templateId: string, init?: Partial<Pick<UserTemplateDto, 'variableTextTemplates' | 'checklist'>>) =>
+  createForTemplate: (templateId: string, init?: Partial<Pick<UserTemplateDto, 'variableTextTemplates' | 'variableSelectOptions' | 'checklist'>>) =>
     apiRequest<UserTemplateDto>(`/user-templates`, { method: 'POST', body: JSON.stringify({ templateId, ...(init || {}) }) }),
   getById: (id: string) => apiRequest<UserTemplateDto>(`/user-templates/${id}`),
-  update: (id: string, payload: Partial<Pick<UserTemplateDto, 'variableTextTemplates' | 'checklist'>>) =>
+  update: (id: string, payload: Partial<Pick<UserTemplateDto, 'variableTextTemplates' | 'variableSelectOptions' | 'checklist'>>) =>
     apiRequest<UserTemplateDto>(`/user-templates/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
 };
 

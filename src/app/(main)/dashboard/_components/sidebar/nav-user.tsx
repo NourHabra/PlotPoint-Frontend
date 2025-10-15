@@ -1,8 +1,12 @@
 "use client";
 
-import { EllipsisVertical, CircleUser, CreditCard, MessageSquareDot, LogOut } from "lucide-react";
+import { useEffect, useState } from "react";
+
+import { EllipsisVertical, CircleUser, CreditCard, MessageSquareDot, LogOut, Megaphone } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
+import { changelogApi } from "@/lib/api";
 import { getInitials } from "@/lib/utils";
 
 export function NavUser({
@@ -25,6 +30,19 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const [openUpdates, setOpenUpdates] = useState(false);
+  const [changes, setChanges] = useState<any[]>([]);
+  useEffect(() => {
+    if (!openUpdates) return;
+    (async () => {
+      try {
+        const list = await changelogApi.list();
+        setChanges(Array.isArray(list) ? list : []);
+      } catch {
+        setChanges([]);
+      }
+    })();
+  }, [openUpdates]);
 
   return (
     <SidebarMenu>
@@ -78,6 +96,10 @@ export function NavUser({
                 <MessageSquareDot />
                 Notifications
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOpenUpdates(true)}>
+                <Megaphone />
+                Updates
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -97,6 +119,27 @@ export function NavUser({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Dialog open={openUpdates} onOpenChange={setOpenUpdates}>
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>What’s new</DialogTitle>
+            </DialogHeader>
+            <div className="max-h-[60vh] overflow-y-auto space-y-4">
+              {changes.map((it) => (
+                <div key={String(it._id)} className="border rounded-md p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">{it.title}</div>
+                    <div className="text-xs text-muted-foreground">{new Date(it.date).toLocaleDateString()}</div>
+                  </div>
+                  <div className="text-sm text-muted-foreground mt-1 whitespace-pre-line">{it.description}</div>
+                </div>
+              ))}
+              {changes.length === 0 && (
+                <div className="text-sm text-muted-foreground">No updates yet.</div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </SidebarMenuItem>
     </SidebarMenu>
   );

@@ -1,22 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, Filter, MoreHorizontal, Edit, Copy, Trash2, Eye, FileText, Loader2, RotateCcw, FileEdit } from "lucide-react";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
+import { Plus, Search, Filter, MoreHorizontal, Edit, Copy, Trash2, Eye, FileText, Loader2, RotateCcw, FileEdit, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { templateApi, ApiError } from "@/lib/api";
 import { Template } from "@/types/template";
@@ -26,6 +32,41 @@ export default function TemplatesPage() {
     const [templates, setTemplates] = useState<Template[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
+    const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+    const [draftVariables, setDraftVariables] = useState<Array<any>>([]);
+    const [draftGroups, setDraftGroups] = useState<Array<any>>([]);
+    const [savingEdit, setSavingEdit] = useState(false);
+    const [newGroupName, setNewGroupName] = useState("");
+    const [newGroupDescription, setNewGroupDescription] = useState("");
+
+    const openEdit = (tpl: Template) => {
+        setEditingTemplate(tpl);
+        setDraftVariables([...(tpl.variables || []).map((v: any) => ({ ...v }))]);
+        setDraftGroups([...(tpl.variableGroups || []).map((g: any) => ({ ...g }))]);
+    };
+
+    const TYPE_OPTIONS = ["text", "kml", "image", "select", "date", "calculated"] as const;
+
+    const persistEdit = async () => {
+        if (!editingTemplate) return;
+        try {
+            setSavingEdit(true);
+            const id = (editingTemplate as any)._id || (editingTemplate as any).id;
+            await templateApi.update(String(id), {
+                variables: draftVariables,
+                variableGroups: draftGroups,
+            });
+            toast.success("Template updated");
+            setEditingTemplate(null);
+            setDraftVariables([]);
+            setDraftGroups([]);
+            loadTemplates();
+        } catch (e) {
+            if (e instanceof ApiError) toast.error(e.message); else toast.error("Update failed");
+        } finally {
+            setSavingEdit(false);
+        }
+    };
 
     useEffect(() => {
         loadTemplates();
@@ -193,7 +234,7 @@ export default function TemplatesPage() {
                                                                 <Tooltip>
                                                                     <TooltipTrigger asChild>
                                                                         <div>
-                                                                            <DropdownMenuItem disabled>
+                                                                            <DropdownMenuItem onClick={() => openEdit(template)}>
                                                                                 <Edit className="h-4 w-4 mr-2" />
                                                                                 Edit
                                                                             </DropdownMenuItem>
@@ -227,9 +268,6 @@ export default function TemplatesPage() {
                                                 </div>
                                             </CardHeader>
                                             <CardContent className="space-y-4 mt-auto">
-
-
-
 
                                                 <Separator />
 
@@ -291,7 +329,7 @@ export default function TemplatesPage() {
                                                                 <Eye className="h-4 w-4 mr-2" />
                                                                 View
                                                             </DropdownMenuItem>
-                                                            <DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => openEdit(template)}>
                                                                 <Edit className="h-4 w-4 mr-2" />
                                                                 Edit
                                                             </DropdownMenuItem>
@@ -313,8 +351,6 @@ export default function TemplatesPage() {
                                                 <div className="flex flex-wrap gap-2">
                                                     <Badge variant="destructive">Inactive</Badge>
                                                 </div>
-
-
 
                                                 <Separator />
 
@@ -355,6 +391,17 @@ export default function TemplatesPage() {
                 </div>
             )}
 
+            <VariableEditorModal
+                open={!!editingTemplate}
+                onOpenChange={(o) => { if (!o) { setEditingTemplate(null); setDraftVariables([]); setDraftGroups([]); } }}
+                variables={draftVariables}
+                setVariables={setDraftVariables as any}
+                groups={draftGroups}
+                setGroups={setDraftGroups as any}
+                onSave={persistEdit}
+                saving={savingEdit}
+            />
+
             {/* Empty State */}
             {!loading && filteredTemplates.length === 0 && (
                 <Card className="text-center py-12">
@@ -386,4 +433,153 @@ export default function TemplatesPage() {
             )}
         </div>
     );
-} 
+}
+
+// Edit Template Modal
+// Placed at bottom to keep component structure simple
+function VariableEditorModal({
+    open,
+    onOpenChange,
+    variables,
+    setVariables,
+    groups,
+    setGroups,
+    onSave,
+    saving,
+}: {
+    open: boolean;
+    onOpenChange: (o: boolean) => void;
+    variables: Array<any>;
+    setVariables: (updater: any) => void;
+    groups: Array<any>;
+    setGroups: (updater: any) => void;
+    onSave: () => void;
+    saving: boolean;
+}) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="w-[98vw] max-w-[1400px]">
+                <DialogHeader>
+                    <DialogTitle>Edit Template Variables</DialogTitle>
+                    <DialogDescription>Update variable descriptions, types, sections, and required flags.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 max-h-[70vh] overflow-auto pr-1">
+                    {/* Sections editor with reorder/delete/add */}
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-medium">Sections</h3>
+                            <Button type="button" variant="outline" size="sm" onClick={() => {
+                                setGroups((prev: any[]) => [...prev, { id: Math.random().toString(36).slice(2), name: "", description: "", order: (prev?.length || 0) }]);
+                            }}>Add Section</Button>
+                        </div>
+                        <div className="space-y-2">
+                            {groups.map((g: any, idx: number) => (
+                                <div key={g.id || idx} className="flex items-center gap-2">
+                                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        <Input value={g.name || ""} onChange={(e) => {
+                                            const name = e.target.value;
+                                            setGroups((prev: any[]) => prev.map((x, i) => i === idx ? { ...x, name } : x));
+                                        }} placeholder="Section name" />
+                                        <Input value={g.description || ""} onChange={(e) => {
+                                            const description = e.target.value;
+                                            setGroups((prev: any[]) => prev.map((x, i) => i === idx ? { ...x, description } : x));
+                                        }} placeholder="Description (optional)" />
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <Button type="button" variant="ghost" size="icon" aria-label="Move up" disabled={idx === 0} onClick={() => {
+                                            setGroups((prev: any[]) => {
+                                                if (idx === 0) return prev;
+                                                const next = [...prev];
+                                                const tmp = next[idx - 1];
+                                                next[idx - 1] = next[idx];
+                                                next[idx] = tmp;
+                                                return next;
+                                            });
+                                        }}>
+                                            <ChevronUp className="h-4 w-4" />
+                                        </Button>
+                                        <Button type="button" variant="ghost" size="icon" aria-label="Move down" disabled={idx === groups.length - 1} onClick={() => {
+                                            setGroups((prev: any[]) => {
+                                                if (idx >= prev.length - 1) return prev;
+                                                const next = [...prev];
+                                                const tmp = next[idx + 1];
+                                                next[idx + 1] = next[idx];
+                                                next[idx] = tmp;
+                                                return next;
+                                            });
+                                        }}>
+                                            <ChevronDown className="h-4 w-4" />
+                                        </Button>
+                                        <Button type="button" variant="ghost" size="icon" aria-label="Delete section" onClick={() => {
+                                            setGroups((prev: any[]) => prev.filter((_, i) => i !== idx));
+                                        }}>
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="h-px bg-border" />
+
+                    {/* Variables list */}
+                    <div className="space-y-3">
+                        {variables.length === 0 && (
+                            <p className="text-sm text-muted-foreground">No variables found.</p>
+                        )}
+                        {variables.map((v: any, idx: number) => (
+                            <div key={v.id || idx} className="border rounded-md p-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <Label>Name</Label>
+                                        <Input value={v.name || ""} readOnly disabled />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label>Type</Label>
+                                        <Input value={v.type} readOnly disabled />
+                                    </div>
+                                    {/* No longer allowing type changes; KML field picker removed */}
+                                    <div className="space-y-1">
+                                        <Label>Description</Label>
+                                        <Input value={v.description || ""} onChange={(e) => {
+                                            const description = e.target.value;
+                                            setVariables((prev: any[]) => prev.map((x, i) => i === idx ? { ...x, description } : x));
+                                        }} placeholder="Short helper text" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label>Section</Label>
+                                        <Select value={v.groupId || "__none__"} onValueChange={(val) => {
+                                            setVariables((prev: any[]) => prev.map((x, i) => i === idx ? { ...x, groupId: val === "__none__" ? undefined : val } : x));
+                                        }}>
+                                            <SelectTrigger><SelectValue placeholder="No section" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="__none__">No section</SelectItem>
+                                                {groups.map((g: any) => (
+                                                    <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Checkbox id={`req-${v.id || idx}`} checked={!!v.isRequired} onCheckedChange={(checked) => {
+                                            setVariables((prev: any[]) => prev.map((x, i) => i === idx ? { ...x, isRequired: !!checked } : x));
+                                        }} />
+                                        <Label htmlFor={`req-${v.id || idx}`}>Required</Label>
+                                    </div>
+                                    {v.type === 'kml' && v.kmlField && (
+                                        <div className="text-xs text-muted-foreground">KML Field: {v.kmlField}</div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                    <Button onClick={onSave} disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}

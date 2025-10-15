@@ -17,6 +17,7 @@ import {
   type ContentLayout,
 } from "@/types/preferences/layout";
 
+import { ClientSideUpdates } from "./_components/client-side-updates";
 import { AccountSwitcher } from "./_components/sidebar/account-switcher";
 import { LayoutControls } from "./_components/sidebar/layout-controls";
 import { SearchDialog } from "./_components/sidebar/search-dialog";
@@ -58,6 +59,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
               {/* <SearchDialog /> */}
             </div>
             <div className="flex items-center gap-2">
+              <ClientSideUpdates />
               {/* <LayoutControls {...layoutPreferences} /> */}
               {/* <ThemeSwitcher /> */}
               <AccountSwitcher users={users} />
