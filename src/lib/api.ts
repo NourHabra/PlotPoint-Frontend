@@ -286,6 +286,14 @@ export const reportApi = {
     apiRequest(`/reports/${reportId}/appendix/${itemId}`, { method: 'DELETE' }),
 };
 
+// Changelog API
+export const changelogApi = {
+  list: () => apiRequest('/changelog'),
+  create: (payload: { title: string; description: string; date: string }) => apiRequest('/changelog', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id: string, payload: Partial<{ title: string; description: string; date: string }>) => apiRequest(`/changelog/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  delete: (id: string) => apiRequest(`/changelog/${id}`, { method: 'DELETE' }),
+};
+
 // Dashboard API
 export const dashboardApi = {
   getSummary: () => apiRequest('/dashboard/reports/summary'),
