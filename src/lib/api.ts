@@ -253,6 +253,37 @@ export const reportApi = {
   },
 
   delete: (id: string) => apiRequest(`/reports/${id}`, { method: 'DELETE' }),
+
+  // Appendix endpoints
+  listAppendix: (reportId: string) => apiRequest(`/reports/${reportId}/appendix`),
+  uploadAppendix: async (reportId: string, files: File[]) => {
+    const url = `${API_BASE_URL}/reports/${encodeURIComponent(reportId)}/appendix/upload`;
+    const form = new FormData();
+    for (const f of files) form.append('files', f);
+    // Attach Authorization header
+    const authHeaders = (() => {
+      if (typeof window === 'undefined') return {} as Record<string, string>;
+      try {
+        const raw = localStorage.getItem('auth');
+        if (!raw) return {} as Record<string, string>;
+        const a = JSON.parse(raw);
+        if (a?.token) return { Authorization: `Bearer ${a.token}` } as Record<string, string>;
+        return {} as Record<string, string>;
+      } catch {
+        return {} as Record<string, string>;
+      }
+    })();
+    const res = await fetch(url, { method: 'POST', body: form, headers: authHeaders });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, data.message ?? 'Appendix upload failed');
+    }
+    return res.json();
+  },
+  reorderAppendix: (reportId: string, items: Array<{ itemId: string; order: number }>) =>
+    apiRequest(`/reports/${reportId}/appendix/order`, { method: 'PATCH', body: JSON.stringify(items) }),
+  deleteAppendixItem: (reportId: string, itemId: string) =>
+    apiRequest(`/reports/${reportId}/appendix/${itemId}`, { method: 'DELETE' }),
 };
 
 // Dashboard API

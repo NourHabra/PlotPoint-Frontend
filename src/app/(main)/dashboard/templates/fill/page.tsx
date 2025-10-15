@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X, Calendar as CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import AppendixManager from "@/components/appendix/appendix-manager";
 import ImageEditor from "@/components/image-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ export default function FillTemplatePage() {
     const [newTplForVarId, setNewTplForVarId] = useState<string | null>(null);
     const [newTplForVarName, setNewTplForVarName] = useState<string>("");
     const [newTplText, setNewTplText] = useState<string>("");
+    const [appendixPreviewItems, setAppendixPreviewItems] = useState<any[]>([]);
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
@@ -272,6 +274,20 @@ export default function FillTemplatePage() {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        // Load appendix list for preview when in preview step
+        const shouldPreview = selectedTemplate && (selectedTemplate.requiresKml ? step === 4 : step === 3);
+        if (!reportId || !shouldPreview) return;
+        (async () => {
+            try {
+                const list = await (reportApi.listAppendix as any)(reportId);
+                setAppendixPreviewItems(Array.isArray(list) ? list : []);
+            } catch (_) {
+                setAppendixPreviewItems([]);
+            }
+        })();
+    }, [reportId, step, selectedTemplate]);
 
     const generateId = () => Math.random().toString(36).slice(2);
 
@@ -492,15 +508,41 @@ export default function FillTemplatePage() {
     };
 
     const refreshPdfPreview = async () => {
-        if (!selectedTemplate) return;
         try {
             setLoading(true);
-            const id = (selectedTemplate._id || (selectedTemplate as any).id) as string;
-            const blob = await templateApi.generate(id, variableValues, 'pdf', selectedTemplate?.requiresKml ? kmlData : undefined);
-            setPdfBlob(blob);
-            if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
-            const url = URL.createObjectURL(blob);
-            setPdfPreviewUrl(url);
+            if (reportId) {
+                // Use report-based preview to include appendix items
+                const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+                const url = `${base}/reports/${encodeURIComponent(reportId)}/preview-pdf`;
+                // Attach Authorization header
+                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                try {
+                    const raw = localStorage.getItem('auth');
+                    if (raw) {
+                        const a = JSON.parse(raw);
+                        if (a?.token) headers['Authorization'] = `Bearer ${a.token}`;
+                    }
+                } catch { }
+                const res = await fetch(url, { method: 'POST', headers });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new ApiError(res.status, data.message || 'Preview failed');
+                }
+                const blob = await res.blob();
+                setPdfBlob(blob);
+                if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+                const obj = URL.createObjectURL(blob);
+                setPdfPreviewUrl(obj);
+            } else {
+                // Fallback: template-based preview (no appendix)
+                if (!selectedTemplate) return;
+                const id = (selectedTemplate._id || (selectedTemplate as any).id) as string;
+                const blob = await templateApi.generate(id, variableValues, 'pdf', selectedTemplate?.requiresKml ? kmlData : undefined);
+                setPdfBlob(blob);
+                if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+                const obj = URL.createObjectURL(blob);
+                setPdfPreviewUrl(obj);
+            }
         } catch (error) {
             if (error instanceof ApiError) toast.error(error.message);
             else toast.error('PDF preview failed');
@@ -1201,6 +1243,8 @@ export default function FillTemplatePage() {
                                 </div>
                             );
                         })()}
+                        {/* Appendix section */}
+                        <AppendixManager reportId={reportId} />
                         <div className="flex justify-end gap-2 pt-2">
                             <Button
                                 variant="outline"
@@ -1253,7 +1297,6 @@ export default function FillTemplatePage() {
                             </Button>
                         </div>
                     </div>
-                    {/* Checklist moved to Preview stage overlay */}
                 </div>
             )}
 
@@ -1453,6 +1496,39 @@ export default function FillTemplatePage() {
                                             </div>
                                         ))}
                                     </div>
+                                    {/* Appendix preview list */}
+                                    {appendixPreviewItems.length > 0 && (
+                                        <div className="mt-6">
+                                            <div className="text-sm font-medium mb-2">Appendix</div>
+                                            <ol className="space-y-2 list-decimal list-inside">
+                                                {appendixPreviewItems
+                                                    .slice()
+                                                    .sort((a: any, b: any) => (Number(a.order || 0) - Number(b.order || 0)))
+                                                    .map((it: any, idx: number) => (
+                                                        <li key={String(it._id)} className="flex items-center gap-3">
+                                                            <div className="w-12 h-12 bg-muted rounded overflow-hidden flex items-center justify-center">
+                                                                {(() => {
+                                                                    const url = (() => {
+                                                                        const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+                                                                        const path = it.thumbPath || it.originalPath;
+                                                                        if (!path) return '';
+                                                                        return path.startsWith('/') ? base + path : base + '/' + path;
+                                                                    })();
+                                                                    if (url) return (
+                                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                                        <img src={url} className="object-cover w-full h-full" alt={it.originalName || it.kind} />
+                                                                    );
+                                                                    return <div className="text-xs text-muted-foreground">No preview</div>;
+                                                                })()}
+                                                            </div>
+                                                            <div className="text-xs text-muted-foreground">
+                                                                {(it.originalName || (it.kind === 'pdf' ? 'PDF' : 'Image'))} {it.pageCount ? `(${it.pageCount} ${it.pageCount === 1 ? 'Page' : 'Pages'})` : ''}
+                                                            </div>
+                                                        </li>
+                                                    ))}
+                                            </ol>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </div>
