@@ -290,7 +290,7 @@ export const reportApi = {
 export const changelogApi = {
   list: () => apiRequest('/changelog'),
   create: (payload: { title: string; description: string; date: string }) => apiRequest('/changelog', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (id: string, payload: Partial<{ title: string; description: string; date: string }>) => apiRequest(`/changelog/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  update: (id: string, payload: Partial<{ title: string; description: string; date: string; disabled: boolean }>) => apiRequest(`/changelog/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   delete: (id: string) => apiRequest(`/changelog/${id}`, { method: 'DELETE' }),
 };
 

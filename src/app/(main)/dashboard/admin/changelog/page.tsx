@@ -2,15 +2,38 @@
 
 import { useEffect, useState } from "react";
 
+import { useRouter } from "next/navigation";
+
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { changelogApi, ApiError } from "@/lib/api";
+import { changelogApi, ApiError, authApi } from "@/lib/api";
 
 export default function Page() {
+    const router = useRouter();
+    const [authorized, setAuthorized] = useState(false);
+    const [authChecked, setAuthChecked] = useState(false);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const me = await authApi.me();
+                if (me.role !== 'Admin') {
+                    router.replace('/dashboard');
+                    return;
+                }
+                setAuthorized(true);
+            } catch {
+                router.replace('/dashboard');
+                return;
+            } finally {
+                setAuthChecked(true);
+            }
+        })();
+    }, [router]);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -47,6 +70,8 @@ export default function Page() {
             setSaving(false);
         }
     };
+
+    if (!authChecked || !authorized) return null;
 
     return (
         <div className="p-4">
