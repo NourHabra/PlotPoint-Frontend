@@ -118,6 +118,20 @@ export default function FillTemplatePage() {
             const qAll = (sel: string): Element[] => Array.from(xml.querySelectorAll(sel));
             const q = (sel: string): Element | null => xml.querySelector(sel);
             const replaceMuWithM = (val: string) => (val || "").replace(/μ/g, 'm');
+            const formatPlotNumber = (val: string) => {
+                const s = (val || '').trim();
+                const idx = s.lastIndexOf('-');
+                if (idx >= 0) return s.slice(idx + 1).trim();
+                return s;
+            };
+            const formatZone = (val: string) => {
+                const s = (val || '').trim();
+                return s.replace(/\s*\([^)]*\)\s*$/, '');
+            };
+            const stripSquareMeters = (val: string) => {
+                const s = replaceMuWithM(val || '').trim();
+                return s.replace(/\s*m2$/i, '').replace(/\s*m²$/i, '');
+            };
             const extractBold = (html: string, label: string): string => {
                 const regex = new RegExp(label + ": <b>(.*?)<\\/b>", "i");
                 const match = html.match(regex);
@@ -159,13 +173,13 @@ export default function FillTemplatePage() {
             const desc = getDescHtml();
             const out: Record<string, string> = {
                 municipality: replaceMuWithM(extractByLabel(desc, "Δήμος")),
-                plot_number: getText(q("Document > name")) || getText(q("name")),
-                plot_area: replaceMuWithM(extractByLabel(desc, "Εμβαδό")),
+                plot_number: formatPlotNumber(getText(q("Document > name")) || getText(q("name"))),
+                plot_area: stripSquareMeters(extractByLabel(desc, "Εμβαδό")),
                 coordinates: extractCoordinatesDom(),
                 sheet_plan: replaceMuWithM(extractByLabel(desc, "Αρ. Φ/Σχ")),
                 registration_number: replaceMuWithM(extractByLabel(desc, "Αριθμός εγγραφης")),
                 property_type: replaceMuWithM(extractByLabel(desc, "Ειδος Ακινήτου")),
-                zone: replaceMuWithM(extractByLabel(desc, "Ζώνη")),
+                zone: formatZone(replaceMuWithM(extractByLabel(desc, "Ζώνη"))),
                 zone_description: replaceMuWithM(extractByLabel(desc, "Ζωνη Περιγραφή")),
                 building_coefficient: replaceMuWithM(extractByLabel(desc, "Δόμηση")),
                 coverage: replaceMuWithM(extractByLabel(desc, "Κάλυψη")),
