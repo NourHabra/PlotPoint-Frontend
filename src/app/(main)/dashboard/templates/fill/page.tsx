@@ -171,12 +171,16 @@ export default function FillTemplatePage() {
             };
 
             const desc = getDescHtml();
+            const sheetPlanRaw = replaceMuWithM(extractByLabel(desc, "Αρ. Φ/Σχ"));
+            const [sheetPart, planPart] = (sheetPlanRaw || "").split("/").map((s) => (s || "").trim());
             const out: Record<string, string> = {
                 municipality: replaceMuWithM(extractByLabel(desc, "Δήμος")),
                 plot_number: formatPlotNumber(getText(q("Document > name")) || getText(q("name"))),
                 plot_area: stripSquareMeters(extractByLabel(desc, "Εμβαδό")),
                 coordinates: extractCoordinatesDom(),
-                sheet_plan: replaceMuWithM(extractByLabel(desc, "Αρ. Φ/Σχ")),
+                sheet_plan: sheetPlanRaw,
+                sheet: sheetPart || "",
+                plan: planPart || "",
                 registration_number: replaceMuWithM(extractByLabel(desc, "Αριθμός εγγραφης")),
                 property_type: replaceMuWithM(extractByLabel(desc, "Ειδος Ακινήτου")),
                 zone: formatZone(replaceMuWithM(extractByLabel(desc, "Ζώνη"))),

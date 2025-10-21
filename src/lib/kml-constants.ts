@@ -9,6 +9,8 @@ export const KML_FIELD_OPTIONS: Array<{
   { value: 'plot_number', label: 'Plot Number', type: 'string' },
   { value: 'plot_area', label: 'Plot Area', type: 'number' },
   { value: 'coordinates', label: 'Coordinates', type: 'string' },
+  { value: 'sheet', label: 'Sheet', type: 'string' },
+  { value: 'plan', label: 'Plan', type: 'string' },
   { value: 'sheet_plan', label: 'Sheet/Plan', type: 'string' },
   { value: 'registration_number', label: 'Registration Number', type: 'string' },
   { value: 'property_type', label: 'Property Type', type: 'string' },
@@ -30,4 +32,4 @@ export function getKMLFieldLabel(value: KMLFieldType): string {
 export function getKMLFieldType(value: KMLFieldType): 'string' | 'number' | 'date' | 'currency' {
   const field = KML_FIELD_OPTIONS.find(option => option.value === value);
   return field ? field.type : 'string';
-} 
+}
