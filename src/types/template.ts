@@ -1,5 +1,7 @@
 export type KMLFieldType =
   | 'municipality'
+  | 'region'
+  | 'part'
   | 'plot_number'
   | 'plot_area'
   | 'coordinates'

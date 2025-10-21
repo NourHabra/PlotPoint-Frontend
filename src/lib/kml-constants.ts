@@ -6,6 +6,8 @@ export const KML_FIELD_OPTIONS: Array<{
   type: 'string' | 'number' | 'date' | 'currency';
 }> = [
   { value: 'municipality', label: 'Municipality', type: 'string' },
+  { value: 'region', label: 'Region', type: 'string' },
+  { value: 'part', label: 'Part', type: 'string' },
   { value: 'plot_number', label: 'Plot Number', type: 'string' },
   { value: 'plot_area', label: 'Plot Area', type: 'number' },
   { value: 'coordinates', label: 'Coordinates', type: 'string' },

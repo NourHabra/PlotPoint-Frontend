@@ -175,6 +175,8 @@ export default function FillTemplatePage() {
             const [sheetPart, planPart] = (sheetPlanRaw || "").split("/").map((s) => (s || "").trim());
             const out: Record<string, string> = {
                 municipality: replaceMuWithM(extractByLabel(desc, "Δήμος")),
+                region: replaceMuWithM(extractByLabel(desc, "Περιοχή")),
+                part: replaceMuWithM(extractByLabel(desc, "Τμήμα")),
                 plot_number: formatPlotNumber(getText(q("Document > name")) || getText(q("name"))),
                 plot_area: stripSquareMeters(extractByLabel(desc, "Εμβαδό")),
                 coordinates: extractCoordinatesDom(),
