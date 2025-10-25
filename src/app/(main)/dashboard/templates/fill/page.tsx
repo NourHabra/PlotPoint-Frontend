@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import AppendixManager from "@/components/appendix/appendix-manager";
 import ImageEditor from "@/components/image-editor";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,6 +54,7 @@ export default function FillTemplatePage() {
     const [isPreviewing, setIsPreviewing] = useState<boolean>(false);
     const [imageEditorFor, setImageEditorFor] = useState<string | null>(null);
     const [imageEditorInitialUrl, setImageEditorInitialUrl] = useState<string | undefined>(undefined);
+    const [removeImageVar, setRemoveImageVar] = useState<string | null>(null);
     const [userTemplate, setUserTemplate] = useState<UserTemplateDto | null>(null);
     const [userTplLoading, setUserTplLoading] = useState<boolean>(false);
     const [checklistCompleted, setChecklistCompleted] = useState<Record<string, boolean>>({});
@@ -1126,6 +1128,13 @@ export default function FillTemplatePage() {
                                                                         setImageEditorInitialUrl(resolveUploadsUrl(variableValues[variableName] || undefined));
                                                                     }}>Edit image</Button>
                                                                 )}
+                                                                {variableValues[variableName] && (
+                                                                    <Button variant="destructive" size="sm" type="button" onClick={() => {
+                                                                        setRemoveImageVar(variableName);
+                                                                    }}>
+                                                                        Remove
+                                                                    </Button>
+                                                                )}
                                                                 {variableValues[variableName] ? null : (
                                                                     <span className="text-xs text-muted-foreground">No file selected</span>
                                                                 )}
@@ -1425,6 +1434,31 @@ export default function FillTemplatePage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Confirm remove image */}
+            <AlertDialog open={!!removeImageVar} onOpenChange={(open) => { if (!open) setRemoveImageVar(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Remove photo?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will remove the selected photo from this report. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setRemoveImageVar(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (!removeImageVar) return;
+                                handleVariableChange(removeImageVar, "");
+                                setRemoveImageVar(null);
+                                toast.success("Photo removed");
+                            }}
+                        >
+                            Remove
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             {/* Create New Template Modal */}
             <Dialog open={!!newTplForVarId} onOpenChange={(open) => { if (!open) { setNewTplForVarId(null); setNewTplText(""); setNewTplForVarName(""); } }}>
