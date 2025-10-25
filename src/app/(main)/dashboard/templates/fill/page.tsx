@@ -1083,8 +1083,27 @@ export default function FillTemplatePage() {
                                                         </div>
                                                     ) : imp.type === 'image' ? (
                                                         <div className="space-y-2">
+                                                            {variableValues[variableName] && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <TooltipProvider>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <a href={resolveUploadsUrl(variableValues[variableName])} target="_blank" rel="noreferrer">
+                                                                                    <img
+                                                                                        src={resolveUploadsUrl(variableValues[variableName])}
+                                                                                        alt={`${label || variableName} preview`}
+                                                                                        className="h-24 w-24 rounded border object-cover"
+                                                                                    />
+                                                                                </a>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>Show Photo</TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                </div>
+                                                            )}
                                                             <div className="flex items-center gap-2">
-                                                                <Input id={variableName} type="file" accept="image/*" onChange={async (e) => {
+                                                                {/* Hidden native input to avoid showing 'No file selected' */}
+                                                                <Input id={`${variableName}-file`} type="file" accept="image/*" className="hidden" onChange={async (e) => {
                                                                     const file = e.target.files?.[0];
                                                                     if (!file) return;
                                                                     try {
@@ -1096,11 +1115,19 @@ export default function FillTemplatePage() {
                                                                     }
                                                                 }} />
                                                                 <Button variant="outline" size="sm" type="button" onClick={() => {
-                                                                    setImageEditorFor(variableName);
-                                                                    setImageEditorInitialUrl(resolveUploadsUrl(variableValues[variableName] || undefined));
-                                                                }}>Edit image</Button>
+                                                                    const el = document.getElementById(`${variableName}-file`) as HTMLInputElement | null;
+                                                                    el?.click();
+                                                                }}>
+                                                                    {variableValues[variableName] ? 'Change Photo' : 'Choose file'}
+                                                                </Button>
                                                                 {variableValues[variableName] && (
-                                                                    <a href={resolveUploadsUrl(variableValues[variableName])} target="_blank" rel="noreferrer" className="text-xs underline text-muted-foreground">View</a>
+                                                                    <Button variant="outline" size="sm" type="button" onClick={() => {
+                                                                        setImageEditorFor(variableName);
+                                                                        setImageEditorInitialUrl(resolveUploadsUrl(variableValues[variableName] || undefined));
+                                                                    }}>Edit image</Button>
+                                                                )}
+                                                                {variableValues[variableName] ? null : (
+                                                                    <span className="text-xs text-muted-foreground">No file selected</span>
                                                                 )}
                                                             </div>
                                                             {imp.description && (
