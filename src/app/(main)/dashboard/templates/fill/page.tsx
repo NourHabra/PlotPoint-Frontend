@@ -61,6 +61,7 @@ export default function FillTemplatePage() {
     const [newTplForVarName, setNewTplForVarName] = useState<string>("");
     const [newTplText, setNewTplText] = useState<string>("");
     const [appendixPreviewItems, setAppendixPreviewItems] = useState<any[]>([]);
+    const [isUploadingAppendix, setIsUploadingAppendix] = useState<boolean>(false);
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
@@ -1264,10 +1265,11 @@ export default function FillTemplatePage() {
                             );
                         })()}
                         {/* Appendix section */}
-                        <AppendixManager reportId={reportId} />
+                        <AppendixManager reportId={reportId} onUploadingChange={setIsUploadingAppendix} />
                         <div className="flex justify-end gap-2 pt-2">
                             <Button
                                 variant="outline"
+                                disabled={isUploadingAppendix}
                                 onClick={async () => {
                                     const id = reportId || (await createReportIfNeeded());
                                     if (!id) return toast.error('Failed to save report');
@@ -1290,7 +1292,7 @@ export default function FillTemplatePage() {
                                 )}
                             </Button>
                             <Button
-                                disabled={isPreviewing}
+                                disabled={isPreviewing || isUploadingAppendix}
                                 onClick={async () => {
                                     if (isPreviewing) return;
                                     setIsPreviewing(true);
