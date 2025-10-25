@@ -43,6 +43,9 @@ export default function ReportsPage() {
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [bankInfoReport, setBankInfoReport] = useState<ReportItem | null>(null);
+    const [renamingReport, setRenamingReport] = useState<ReportItem | null>(null);
+    const [renameTitle, setRenameTitle] = useState<string>("");
+    const [renaming, setRenaming] = useState<boolean>(false);
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
@@ -235,6 +238,14 @@ export default function ReportsPage() {
                                                     const canAdvance = !!nextStatus(r.status);
                                                     return (
                                                         <>
+                                                            <DropdownMenuItem
+                                                                onClick={() => {
+                                                                    setRenamingReport(r);
+                                                                    setRenameTitle((r.title ?? r.name ?? "").trim());
+                                                                }}
+                                                            >
+                                                                <Edit className="h-4 w-4 mr-2" /> Rename
+                                                            </DropdownMenuItem>
                                                             {canAdvance ? (
                                                                 <DropdownMenuItem
                                                                     onClick={() => {
@@ -450,6 +461,51 @@ export default function ReportsPage() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setBankInfoReport(null)}>Close</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Rename report dialog */}
+            <Dialog open={!!renamingReport} onOpenChange={(open) => { if (!open) { setRenamingReport(null); setRenameTitle(""); } }}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Rename Report</DialogTitle>
+                        <DialogDescription>Enter a new name for your report.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2">
+                        <Input
+                            placeholder="Report title"
+                            value={renameTitle}
+                            onChange={(e) => setRenameTitle(e.target.value)}
+                            autoFocus
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setRenamingReport(null); setRenameTitle(""); }}>Cancel</Button>
+                        <Button
+                            onClick={async () => {
+                                if (!renamingReport) return;
+                                const newTitle = (renameTitle || "").trim();
+                                if (!newTitle) { toast.error('Enter a report title'); return; }
+                                try {
+                                    setRenaming(true);
+                                    const updated = await reportApi.update(renamingReport._id, { title: newTitle });
+                                    const u = updated as any;
+                                    setReports((prev) => prev.map((r) => r._id === renamingReport._id ? { ...r, title: u.title, name: u.name ?? r.name } : r));
+                                    toast.success('Report renamed');
+                                    setRenamingReport(null);
+                                    setRenameTitle("");
+                                } catch (error) {
+                                    if (error instanceof ApiError) toast.error(error.message);
+                                    else toast.error('Rename failed');
+                                } finally {
+                                    setRenaming(false);
+                                }
+                            }}
+                            disabled={renaming}
+                        >
+                            {renaming ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>) : 'Save'}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
