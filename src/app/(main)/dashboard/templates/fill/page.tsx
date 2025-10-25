@@ -1401,12 +1401,12 @@ export default function FillTemplatePage() {
 
             {/* Create New Template Modal */}
             <Dialog open={!!newTplForVarId} onOpenChange={(open) => { if (!open) { setNewTplForVarId(null); setNewTplText(""); setNewTplForVarName(""); } }}>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Create new template</DialogTitle>
                         <DialogDescription>Save your current text as a reusable template for this variable.</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-3">
+                    <div className="space-y-3 overflow-auto min-h-0 pr-1">
                         <div>
                             <Label className="text-xs text-muted-foreground">Variable</Label>
                             <div className="text-sm font-medium">{newTplForVarName}</div>
