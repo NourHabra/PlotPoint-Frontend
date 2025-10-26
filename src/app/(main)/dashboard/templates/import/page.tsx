@@ -43,7 +43,7 @@ function generateId() {
 export default function ImportTemplatePage() {
     const router = useRouter();
     const [step, setStep] = useState<1 | 2 | 3>(1);
-    const [isTokenized, setIsTokenized] = useState(false);
+    const isTokenized = true;
     const [templateName, setTemplateName] = useState("");
     const [templateDescription, setTemplateDescription] = useState("");
     const [requiresKml, setRequiresKml] = useState(false);
@@ -78,8 +78,7 @@ export default function ImportTemplatePage() {
         !!docFile ||
         variables.length > 0 ||
         variableGroups.length > 0 ||
-        requiresKml ||
-        isTokenized
+        requiresKml
     );
 
     // Warn on reload/close
@@ -258,7 +257,7 @@ export default function ImportTemplatePage() {
         <div className="@container/main flex flex-col gap-4 md:gap-6">
             <div className="flex flex-col gap-2">
                 <h1 className="text-3xl font-bold tracking-tight">Create New Template</h1>
-                <p className="text-muted-foreground">{isTokenized ? "Upload an already tokenized .docx ({{Variable Name}}) and configure variables." : "Upload a .docx and configure variables."}</p>
+                <p className="text-muted-foreground">Upload an already tokenized .docx ({'{{'} Variable Name {'}}'}) and configure variables.</p>
             </div>
 
             {step === 1 && (
@@ -266,7 +265,7 @@ export default function ImportTemplatePage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Template details</CardTitle>
-                            <CardDescription>Name your template, choose mode, and upload the Word file</CardDescription>
+                            <CardDescription>Name the template and upload your tokenized Word file.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -277,14 +276,6 @@ export default function ImportTemplatePage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="template-description">Description</Label>
                                     <Input id="template-description" placeholder="What is this template for?" value={templateDescription} onChange={(e) => setTemplateDescription(e.target.value)} />
-                                </div>
-                                <div className="flex items-center gap-2 pt-6">
-                                    <Checkbox id="is-tokenized" checked={isTokenized} onCheckedChange={(v) => setIsTokenized(Boolean(v))} />
-                                    <Label htmlFor="is-tokenized">Already tokenized (uses {'{{'} Variable Name {'}}'})</Label>
-                                </div>
-                                <div className="flex items-center gap-2 pt-6">
-                                    <Checkbox id="requires-kml" checked={requiresKml} onCheckedChange={(v) => setRequiresKml(Boolean(v))} />
-                                    <Label htmlFor="requires-kml">This template requires a KML file upload</Label>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="docx">Word file (.docx)</Label>
@@ -297,10 +288,14 @@ export default function ImportTemplatePage() {
                                     {isTokenized && serverUploadedPath && (
                                         <p className="text-xs text-muted-foreground">Analyzed and uploaded to server</p>
                                     )}
+                                    <div className="flex items-center gap-2 pt-4">
+                                        <Checkbox id="requires-kml" checked={requiresKml} onCheckedChange={(v) => setRequiresKml(Boolean(v))} />
+                                        <Label htmlFor="requires-kml">This template requires a KML file upload</Label>
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex justify-end">
-                                <Button onClick={() => setStep(2)} disabled={!templateName || !docFile}>Continue</Button>
+                                <Button onClick={() => setStep(2)} disabled={!templateName || !docFile || analyzing || variables.length === 0}>Continue</Button>
                             </div>
                         </CardContent>
                     </Card>
@@ -325,7 +320,7 @@ export default function ImportTemplatePage() {
                     const id = generateId();
                     setVariables(prev => ([...prev, { id, name: "", type: "text", sourceText: "", isRequired: false, textTemplates: [] }]));
                   }}>Add variable</Button> */}
-                                    <Button onClick={() => setStep(3)}>Next</Button>
+                                    <Button onClick={() => setStep(3)} disabled={analyzing || variables.length === 0}>Next</Button>
                                 </div>
                             </div>
 
