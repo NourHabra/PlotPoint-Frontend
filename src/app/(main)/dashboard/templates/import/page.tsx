@@ -64,6 +64,21 @@ export default function ImportTemplatePage() {
     const [editGroupDescription, setEditGroupDescription] = useState("");
     const [confirmReAnalyze, setConfirmReAnalyze] = useState(false);
     const [confirmDeleteVarId, setConfirmDeleteVarId] = useState<string | null>(null);
+    const [duplicateForVarId, setDuplicateForVarId] = useState<string | null>(null);
+    const [duplicateTargetGroup, setDuplicateTargetGroup] = useState<string | "__none__">("__none__");
+
+    const duplicateVariable = (id: string, targetGroupId?: string) => {
+        setVariables(prev => {
+            const src = prev.find(v => v.id === id);
+            if (!src) return prev;
+            const copy: VariableDef = {
+                ...src,
+                id: generateId(),
+                groupId: targetGroupId,
+            };
+            return [...prev, copy];
+        });
+    };
 
     const moveGroup = (groupId: string, direction: -1 | 1) => {
         setVariableGroups(prev => {
@@ -85,35 +100,50 @@ export default function ImportTemplatePage() {
         setServerUploadedPath("");
         if (!file) return;
         if (!isTokenized) return;
-        try {
-            setAnalyzing(true);
-            const result = await templateApi.analyzeDocx(file);
-            setServerUploadedPath(result.uploadedPath);
-            const seeded: VariableDef[] = (result.variables || []).map((t) => ({
-                id: generateId(),
-                name: t.name,
-                type: "text",
-                sourceText: `{{${t.name}}}`,
-                isRequired: false,
-                textTemplates: [],
-            }));
-            setVariables(seeded);
-            toast.success(`Found ${seeded.length} variables in tokenized file`);
-        } catch (e) {
+                try {
+                    setAnalyzing(true);
+                    const result = await templateApi.analyzeDocx(file);
+                    setServerUploadedPath(result.uploadedPath);
+            const seeded: VariableDef[] = (result.variables || []).map((t, idx) => ({
+                        id: generateId(),
+                        name: t.name,
+                        type: "text",
+                        sourceText: `{{${t.name}}}`,
+                        isRequired: false,
+                        textTemplates: [],
+                    }));
+                    setVariables(seeded);
+                    toast.success(`Found ${seeded.length} variables in tokenized file`);
+                } catch (e) {
             if (e instanceof ApiError) toast.error(e.message); else toast.error("Analyze failed");
-        } finally {
-            setAnalyzing(false);
+                } finally {
+                    setAnalyzing(false);
         }
     };
 
     const updateVariableById = (id: string, patch: Partial<VariableDef>) => {
-        setVariables(prev => prev.map(v => {
-            if (v.id !== id) return v;
-            const targetType = (patch.type ?? v.type) as FieldType;
-            const normalized: Partial<VariableDef> = { ...patch };
-            if (targetType === "kml") normalized.isRequired = false;
-            return { ...v, ...normalized };
-        }));
+        setVariables(prev => {
+            const current = prev.find(v => v.id === id);
+            if (!current) return prev;
+            const targetType = (patch.type ?? current.type) as FieldType;
+            return prev.map(v => {
+                // propagate all changes except groupId across same-name variables
+                if (v.name === current.name) {
+                    const normalized: Partial<VariableDef> = { ...patch };
+                    if (targetType === "kml") normalized.isRequired = false;
+                    // keep each occurrence section separate
+                    if (patch.groupId === undefined) {
+                        // not changing section: apply to all with same name
+                        return { ...v, ...normalized };
+                    } else {
+                        // changing section: only apply groupId to the targeted id
+                        if (v.id === id) return { ...v, groupId: patch.groupId } as VariableDef;
+                        return v;
+                    }
+                }
+                return v;
+            });
+        });
     };
 
     const removeVariable = (id: string) => {
@@ -206,12 +236,12 @@ export default function ImportTemplatePage() {
 
             {step === 2 && (
                 <div className="grid grid-cols-1 gap-6">
-                    <Card>
-                        <CardHeader>
+                        <Card>
+                            <CardHeader>
                             <CardTitle>Variables</CardTitle>
                             <CardDescription>Edit each variable inline. Use sections to organize.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
+                            </CardHeader>
+                            <CardContent className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
                                 <div className="flex items-center gap-2">
@@ -224,7 +254,7 @@ export default function ImportTemplatePage() {
                   }}>Add variable</Button> */}
                                     <Button onClick={() => setStep(3)}>Next</Button>
                                 </div>
-                            </div>
+                                                </div>
 
                             {variables.length === 0 && (
                                 <p className="text-sm text-muted-foreground">No variables yet. Use Analyze or Add variable.</p>
@@ -258,12 +288,12 @@ export default function ImportTemplatePage() {
                                                                 <TooltipContent>Move section down</TooltipContent>
                                                             </Tooltip>
                                                         </TooltipProvider>
-                                                    </div>
+                                            </div>
                                                     <div className="group flex items-center gap-2">
                                                         <div className="flex flex-col gap-1">
                                                             <h3 className="text-base font-semibold">{g.name}</h3>
                                                             {g.description && <span className="text-xs text-muted-foreground">{g.description}</span>}
-                                                        </div>
+                                        </div>
                                                         <TooltipProvider>
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
@@ -279,54 +309,54 @@ export default function ImportTemplatePage() {
                                                                 <TooltipContent>Edit section</TooltipContent>
                                                             </Tooltip>
                                                         </TooltipProvider>
+                                                        </div>
                                                     </div>
-                                                </div>
                                                 <div />
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                                 {inGroup.length === 0 && (
                                                     <div className="text-sm text-muted-foreground col-span-full">No variables in this section.</div>
                                                 )}
-                                                {inGroup.map((v) => (
+                                                {inGroup.map((v, i) => (
                                                     <div key={v.id} className="rounded-md border p-4 space-y-3">
                                                         <div className="flex items-center justify-between">
                                                             <div className="flex items-center gap-2">
                                                                 {/* <Badge variant="outline">{v.type}</Badge> */}
                                                                 <span className="font-medium">{v.name || "(unnamed)"}</span>
-                                                            </div>
+                                        </div>
                                                             <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteVarId(v.id)}>
                                                                 <Trash2 className="h-4 w-4" />
                                                             </Button>
-                                                        </div>
+                    </div>
 
                                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                            <div className="space-y-2">
-                                                                <Label>Type</Label>
+                                        <div className="space-y-2">
+                                            <Label>Type</Label>
                                                                 <Select value={v.type} onValueChange={(val: FieldType) => updateVariableById(v.id, { type: val })}>
-                                                                    <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="text">Text</SelectItem>
-                                                                        <SelectItem value="kml">KML Value</SelectItem>
-                                                                        <SelectItem value="image">Image</SelectItem>
-                                                                        <SelectItem value="select">Dropdown</SelectItem>
-                                                                        <SelectItem value="date">Date</SelectItem>
-                                                                    </SelectContent>
-                                                                </Select>
-                                                            </div>
+                                                <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="text">Text</SelectItem>
+                                                    <SelectItem value="kml">KML Value</SelectItem>
+                                                    <SelectItem value="image">Image</SelectItem>
+                                                    <SelectItem value="select">Dropdown</SelectItem>
+                                                    <SelectItem value="date">Date</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
 
                                                             {v.type === 'kml' && (
-                                                                <div className="space-y-2">
-                                                                    <Label>KML field</Label>
+                                            <div className="space-y-2">
+                                                <Label>KML field</Label>
                                                                     <Select value={v.kmlField} onValueChange={(val) => updateVariableById(v.id, { kmlField: val as any })}>
-                                                                        <SelectTrigger><SelectValue placeholder="Choose KML field" /></SelectTrigger>
-                                                                        <SelectContent>
-                                                                            {KML_FIELD_OPTIONS.map(o => (
-                                                                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                                                                            ))}
-                                                                        </SelectContent>
-                                                                    </Select>
-                                                                </div>
-                                                            )}
+                                                    <SelectTrigger><SelectValue placeholder="Choose KML field" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {KML_FIELD_OPTIONS.map(o => (
+                                                            <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        )}
 
                                                             <div className="space-y-2 md:col-span-2">
                                                                 <Label>Section</Label>
@@ -378,7 +408,7 @@ export default function ImportTemplatePage() {
                                                         </Button>
                                                     </div>
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                        <div className="space-y-2">
+                                        <div className="space-y-2">
                                                             <Label>Type</Label>
                                                             <Select value={v.type} onValueChange={(val: FieldType) => updateVariableById(v.id, { type: val })}>
                                                                 <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
@@ -390,9 +420,9 @@ export default function ImportTemplatePage() {
                                                                     <SelectItem value="date">Date</SelectItem>
                                                                 </SelectContent>
                                                             </Select>
-                                                        </div>
+                                        </div>
                                                         {v.type === 'kml' && (
-                                                            <div className="space-y-2">
+                                        <div className="space-y-2">
                                                                 <Label>KML field</Label>
                                                                 <Select value={v.kmlField} onValueChange={(val) => updateVariableById(v.id, { kmlField: val as any })}>
                                                                     <SelectTrigger><SelectValue placeholder="Choose KML field" /></SelectTrigger>
@@ -405,19 +435,19 @@ export default function ImportTemplatePage() {
                                                             </div>
                                                         )}
                                                         <div className="space-y-2 md:col-span-2">
-                                                            <Label>Section</Label>
-                                                            <div className="flex gap-2">
+                                            <Label>Section</Label>
+                                            <div className="flex gap-2">
                                                                 <Select value={v.groupId ?? '__none__'} onValueChange={(val: string) => updateVariableById(v.id, { groupId: val === '__none__' ? undefined : val })}>
                                                                     <SelectTrigger><SelectValue placeholder="No section" /></SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="__none__">No section</SelectItem>
+                                                    <SelectContent>
+                                                        <SelectItem value="__none__">No section</SelectItem>
                                                                         {variableGroups.map(gg => (
                                                                             <SelectItem key={gg.id} value={gg.id}>{gg.name}</SelectItem>
-                                                                        ))}
-                                                                    </SelectContent>
-                                                                </Select>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
                                                                 <Button type="button" variant="outline" onClick={() => { setGroupAssignForVarId(v.id); setIsGroupModalOpen(true); }}>New</Button>
-                                                            </div>
+                                            </div>
                                                         </div>
                                                         <div className="space-y-2 md:col-span-2">
                                                             <Label htmlFor={`desc-${v.id}`}>Description (optional)</Label>
@@ -434,43 +464,43 @@ export default function ImportTemplatePage() {
                                         </div>
                                     </div>
                                 )}
-                            </div>
+                                        </div>
 
                             <Dialog open={isGroupModalOpen} onOpenChange={(open) => { setIsGroupModalOpen(open); if (!open) setGroupAssignForVarId(null); }}>
-                                <DialogContent>
-                                    <DialogHeader>
-                                        <DialogTitle>Create section</DialogTitle>
-                                        <DialogDescription>Group related variables under a named section.</DialogDescription>
-                                    </DialogHeader>
-                                    <div className="space-y-3 py-2">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="new-group-name">Name</Label>
-                                            <Input id="new-group-name" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="e.g., Property Information" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="new-group-desc">Description (optional)</Label>
-                                            <Input id="new-group-desc" value={newGroupDescription} onChange={(e) => setNewGroupDescription(e.target.value)} placeholder="Brief description" />
-                                        </div>
-                                    </div>
-                                    <DialogFooter>
+                                            <DialogContent>
+                                                <DialogHeader>
+                                                    <DialogTitle>Create section</DialogTitle>
+                                                    <DialogDescription>Group related variables under a named section.</DialogDescription>
+                                                </DialogHeader>
+                                                <div className="space-y-3 py-2">
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="new-group-name">Name</Label>
+                                                        <Input id="new-group-name" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="e.g., Property Information" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="new-group-desc">Description (optional)</Label>
+                                                        <Input id="new-group-desc" value={newGroupDescription} onChange={(e) => setNewGroupDescription(e.target.value)} placeholder="Brief description" />
+                                                    </div>
+                                                </div>
+                                                <DialogFooter>
                                         <Button variant="outline" onClick={() => { setIsGroupModalOpen(false); setGroupAssignForVarId(null); }}>Cancel</Button>
-                                        <Button onClick={() => {
-                                            const name = newGroupName.trim();
-                                            if (!name) { toast("Enter section name"); return; }
-                                            const id = generateId();
-                                            const description = newGroupDescription.trim() || undefined;
-                                            setVariableGroups(prev => [...prev, { id, name, description }]);
+                                                    <Button onClick={() => {
+                                                        const name = newGroupName.trim();
+                                                        if (!name) { toast("Enter section name"); return; }
+                                                        const id = generateId();
+                                                        const description = newGroupDescription.trim() || undefined;
+                                                        setVariableGroups(prev => [...prev, { id, name, description }]);
                                             if (groupAssignForVarId) updateVariableById(groupAssignForVarId, { groupId: id });
-                                            setIsGroupModalOpen(false);
+                                                        setIsGroupModalOpen(false);
                                             setGroupAssignForVarId(null);
-                                            setNewGroupName("");
-                                            setNewGroupDescription("");
-                                        }}>Create</Button>
-                                    </DialogFooter>
-                                </DialogContent>
-                            </Dialog>
-                        </CardContent>
-                    </Card>
+                                                        setNewGroupName("");
+                                                        setNewGroupDescription("");
+                                                    }}>Create</Button>
+                                                </DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
+                            </CardContent>
+                        </Card>
                 </div>
             )}
 
