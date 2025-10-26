@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -66,6 +66,78 @@ export default function ImportTemplatePage() {
     const [confirmDeleteVarId, setConfirmDeleteVarId] = useState<string | null>(null);
     const [duplicateForVarId, setDuplicateForVarId] = useState<string | null>(null);
     const [duplicateTargetGroup, setDuplicateTargetGroup] = useState<string | "__none__">("__none__");
+
+    // Navigation guard state
+    const [navConfirmOpen, setNavConfirmOpen] = useState(false);
+    const pendingNavRef = useRef<null | { type: "href" | "back"; href?: string }>(null);
+    const allowNavigateRef = useRef(false);
+
+    const hasProgress = (
+        (templateName.trim().length > 0) ||
+        (templateDescription.trim().length > 0) ||
+        !!docFile ||
+        variables.length > 0 ||
+        variableGroups.length > 0 ||
+        requiresKml ||
+        isTokenized
+    );
+
+    // Warn on reload/close
+    useEffect(() => {
+        const onBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (!hasProgress || allowNavigateRef.current) return;
+            e.preventDefault();
+            e.returnValue = "";
+        };
+        window.addEventListener("beforeunload", onBeforeUnload);
+        return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    }, [hasProgress]);
+
+    // Intercept link clicks
+    useEffect(() => {
+        const onClick = (e: MouseEvent) => {
+            if (!hasProgress || allowNavigateRef.current) return;
+            if (e.defaultPrevented) return;
+            if (e.button !== 0) return; // only left-click
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; // new tab/window
+            const target = e.target as Element | null;
+            if (!target) return;
+            const anchor = target.closest && target.closest("a[href]") as HTMLAnchorElement | null;
+            if (!anchor) return;
+            if (anchor.target && anchor.target !== "_self") return;
+            const href = anchor.href;
+            if (!href) return;
+            // Ignore hash-only changes within the same page
+            const url = new URL(href, window.location.href);
+            const isSamePageHash = url.origin === window.location.origin && url.pathname === window.location.pathname && url.hash !== "";
+            if (isSamePageHash) return;
+            const isSameUrl = url.href === window.location.href;
+            if (isSameUrl) return;
+            e.preventDefault();
+            pendingNavRef.current = { type: "href", href: url.pathname + url.search + url.hash };
+            setNavConfirmOpen(true);
+        };
+        document.addEventListener("click", onClick, true);
+        return () => document.removeEventListener("click", onClick, true);
+    }, [hasProgress]);
+
+    // Intercept browser back with a history guard
+    useEffect(() => {
+        if (!hasProgress) return;
+        const onPopState = () => {
+            if (allowNavigateRef.current) return;
+            // Re-insert the state to keep user on the same page and show confirm
+            history.pushState(null, "", window.location.href);
+            pendingNavRef.current = { type: "back" };
+            setNavConfirmOpen(true);
+        };
+        window.addEventListener("popstate", onPopState);
+        // Add a guard state so the first back only triggers popstate
+        history.pushState(null, "", window.location.href);
+        return () => {
+            window.removeEventListener("popstate", onPopState);
+        };
+    }, [hasProgress]);
 
     const duplicateVariable = (id: string, targetGroupId?: string) => {
         setVariables(prev => {
@@ -173,6 +245,7 @@ export default function ImportTemplatePage() {
                 await templateApi.importDocx(templateName, templateDescription, docFile, variables, requiresKml, variableGroups);
             }
             toast.success("Template imported successfully");
+            allowNavigateRef.current = true;
             router.push("/dashboard/templates");
         } catch (error) {
             if (error instanceof ApiError) toast.error(error.message); else toast.error("Import failed");
@@ -360,16 +433,18 @@ export default function ImportTemplatePage() {
 
                                                             <div className="space-y-2 md:col-span-2">
                                                                 <Label>Section</Label>
-                                                                <div className="flex gap-2">
-                                                                    <Select value={v.groupId ?? '__none__'} onValueChange={(val: string) => updateVariableById(v.id, { groupId: val === '__none__' ? undefined : val })}>
-                                                                        <SelectTrigger><SelectValue placeholder="No section" /></SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="__none__">No section</SelectItem>
-                                                                            {variableGroups.map(gg => (
-                                                                                <SelectItem key={gg.id} value={gg.id}>{gg.name}</SelectItem>
-                                                                            ))}
-                                                                        </SelectContent>
-                                                                    </Select>
+                                                                <div className="flex gap-2 min-w-0">
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <Select value={v.groupId ?? '__none__'} onValueChange={(val: string) => updateVariableById(v.id, { groupId: val === '__none__' ? undefined : val })}>
+                                                                            <SelectTrigger className="w-full max-w-full overflow-hidden"><SelectValue placeholder="No section" className="truncate" /></SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="__none__">No section</SelectItem>
+                                                                                {variableGroups.map(gg => (
+                                                                                    <SelectItem key={gg.id} value={gg.id}>{gg.name}</SelectItem>
+                                                                                ))}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </div>
                                                                     <Button type="button" variant="outline" onClick={() => { setGroupAssignForVarId(v.id); setIsGroupModalOpen(true); }}>New</Button>
                                                                 </div>
                                                             </div>
@@ -436,16 +511,18 @@ export default function ImportTemplatePage() {
                                                         )}
                                                         <div className="space-y-2 md:col-span-2">
                                                             <Label>Section</Label>
-                                                            <div className="flex gap-2">
-                                                                <Select value={v.groupId ?? '__none__'} onValueChange={(val: string) => updateVariableById(v.id, { groupId: val === '__none__' ? undefined : val })}>
-                                                                    <SelectTrigger><SelectValue placeholder="No section" /></SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="__none__">No section</SelectItem>
-                                                                        {variableGroups.map(gg => (
-                                                                            <SelectItem key={gg.id} value={gg.id}>{gg.name}</SelectItem>
-                                                                        ))}
-                                                                    </SelectContent>
-                                                                </Select>
+                                                            <div className="flex gap-2 min-w-0">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <Select value={v.groupId ?? '__none__'} onValueChange={(val: string) => updateVariableById(v.id, { groupId: val === '__none__' ? undefined : val })}>
+                                                                        <SelectTrigger className="w-full max-w-full overflow-hidden"><SelectValue placeholder="No section" className="truncate" /></SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="__none__">No section</SelectItem>
+                                                                            {variableGroups.map(gg => (
+                                                                                <SelectItem key={gg.id} value={gg.id}>{gg.name}</SelectItem>
+                                                                            ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
                                                                 <Button type="button" variant="outline" onClick={() => { setGroupAssignForVarId(v.id); setIsGroupModalOpen(true); }}>New</Button>
                                                             </div>
                                                         </div>
@@ -643,6 +720,37 @@ export default function ImportTemplatePage() {
                             }}
                         >
                             Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Confirm Navigation Away */}
+            <AlertDialog open={navConfirmOpen} onOpenChange={(open) => { if (!open) { setNavConfirmOpen(false); pendingNavRef.current = null; } }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Leave this page?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            You have unsaved progress. If you leave now, your changes will be lost.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => { setNavConfirmOpen(false); pendingNavRef.current = null; }}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                const pending = pendingNavRef.current;
+                                setNavConfirmOpen(false);
+                                if (!pending) return;
+                                allowNavigateRef.current = true;
+                                if (pending.type === "href" && pending.href) {
+                                    router.push(pending.href);
+                                } else if (pending.type === "back") {
+                                    history.back();
+                                }
+                                pendingNavRef.current = null;
+                            }}
+                        >
+                            Leave page
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
