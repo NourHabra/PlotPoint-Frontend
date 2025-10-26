@@ -28,11 +28,12 @@ function buildUploadsUrl(u?: string): string | undefined {
     return base + '/' + u;
 }
 
-export default function AppendixManager({ reportId }: { reportId: string | null }) {
+export default function AppendixManager({ reportId, onUploadingChange }: { reportId: string | null, onUploadingChange?: (uploading: boolean) => void }) {
     const [items, setItems] = useState<AppendixItem[]>([]);
     const [loading, setLoading] = useState(false);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const [savingOrder, setSavingOrder] = useState(false);
+    const [uploading, setUploading] = useState(false);
 
     const sortedItems = useMemo(() => items.slice().sort((a, b) => (a.order || 0) - (b.order || 0)), [items]);
 
@@ -54,6 +55,8 @@ export default function AppendixManager({ reportId }: { reportId: string | null 
     const onFilesSelected = async (files: FileList | null) => {
         if (!reportId || !files || files.length === 0) return;
         try {
+            setUploading(true);
+            if (onUploadingChange) onUploadingChange(true);
             const arr = Array.from(files);
             await (reportApi.uploadAppendix as any)(reportId, arr);
             toast.success('Uploaded');
@@ -62,6 +65,8 @@ export default function AppendixManager({ reportId }: { reportId: string | null 
             toast.error('Upload failed');
         } finally {
             if (inputRef.current) inputRef.current.value = '';
+            setUploading(false);
+            if (onUploadingChange) onUploadingChange(false);
         }
     };
 
@@ -126,8 +131,10 @@ export default function AppendixManager({ reportId }: { reportId: string | null 
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="flex items-center gap-2">
-                    <Input ref={inputRef} type="file" multiple accept="image/*,application/pdf" onChange={(e) => onFilesSelected(e.target.files)} />
-                    <Button variant="outline" onClick={() => inputRef.current?.click()}><Upload className="h-4 w-4 mr-2" />Upload</Button>
+                    <Input ref={inputRef} type="file" multiple accept="image/*,application/pdf" onChange={(e) => onFilesSelected(e.target.files)} disabled={uploading} />
+                    <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={uploading}>
+                        <Upload className="h-4 w-4 mr-2" />{uploading ? 'Uploading...' : 'Upload'}
+                    </Button>
                 </div>
                 <ol className="space-y-2 list-none">
                     {sortedItems.map((it, idx) => (

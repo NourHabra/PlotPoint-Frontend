@@ -93,31 +93,21 @@ export function ImageEditor({ initialImageUrl, onExportBlob, exposeRef, maxDimen
     const setupCanvasForImage = (img: HTMLImageElement) => {
         const work = workRef.current!;
         const canvas = canvasRef.current!;
-        const container = canvas.parentElement as HTMLElement | null;
-        const containerW = Math.max(1, container ? container.clientWidth : maxDimension);
-        const containerH = Math.max(1, container ? container.clientHeight : maxDimension);
+        // Ensure the prop is not flagged as unused by linters even if we do not scale
+        void maxDimension;
 
         const imgW = img.naturalWidth;
         const imgH = img.naturalHeight;
-        // Contain-fit: scale the image to fit entirely within the container area, no cropping
-        const scale = Math.min(
-            1,
-            maxDimension / Math.max(imgW, imgH),
-            containerW / imgW,
-            containerH / imgH
-        );
-        const drawW = Math.max(1, Math.round(imgW * scale));
-        const drawH = Math.max(1, Math.round(imgH * scale));
 
-        // Size canvas exactly to the scaled image to avoid overflow
-        work.width = drawW;
-        work.height = drawH;
-        canvas.width = drawW;
-        canvas.height = drawH;
+        // Use the original image dimensions without any scaling
+        work.width = imgW;
+        work.height = imgH;
+        canvas.width = imgW;
+        canvas.height = imgH;
 
         const wctx = work.getContext("2d", { willReadFrequently: true })!;
-        wctx.clearRect(0, 0, drawW, drawH);
-        wctx.drawImage(img, 0, 0, drawW, drawH);
+        wctx.clearRect(0, 0, imgW, imgH);
+        wctx.drawImage(img, 0, 0);
     };
 
     const redraw = (overlayOnly = false) => {

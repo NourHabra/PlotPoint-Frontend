@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import AppendixManager from "@/components/appendix/appendix-manager";
 import ImageEditor from "@/components/image-editor";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,6 +54,7 @@ export default function FillTemplatePage() {
     const [isPreviewing, setIsPreviewing] = useState<boolean>(false);
     const [imageEditorFor, setImageEditorFor] = useState<string | null>(null);
     const [imageEditorInitialUrl, setImageEditorInitialUrl] = useState<string | undefined>(undefined);
+    const [removeImageVar, setRemoveImageVar] = useState<string | null>(null);
     const [userTemplate, setUserTemplate] = useState<UserTemplateDto | null>(null);
     const [userTplLoading, setUserTplLoading] = useState<boolean>(false);
     const [checklistCompleted, setChecklistCompleted] = useState<Record<string, boolean>>({});
@@ -61,6 +63,7 @@ export default function FillTemplatePage() {
     const [newTplForVarName, setNewTplForVarName] = useState<string>("");
     const [newTplText, setNewTplText] = useState<string>("");
     const [appendixPreviewItems, setAppendixPreviewItems] = useState<any[]>([]);
+    const [isUploadingAppendix, setIsUploadingAppendix] = useState<boolean>(false);
     const STATUS_FLOW = ["Draft", "Initial Review", "Final Review", "Submitted"] as const;
     type ReportStatus = typeof STATUS_FLOW[number];
     const nextStatus = (s?: string) => {
@@ -1082,8 +1085,27 @@ export default function FillTemplatePage() {
                                                         </div>
                                                     ) : imp.type === 'image' ? (
                                                         <div className="space-y-2">
+                                                            {variableValues[variableName] && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <TooltipProvider>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <a href={resolveUploadsUrl(variableValues[variableName])} target="_blank" rel="noreferrer">
+                                                                                    <img
+                                                                                        src={resolveUploadsUrl(variableValues[variableName])}
+                                                                                        alt={`${label || variableName} preview`}
+                                                                                        className="h-24 w-24 rounded border object-cover"
+                                                                                    />
+                                                                                </a>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>Show Photo</TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                </div>
+                                                            )}
                                                             <div className="flex items-center gap-2">
-                                                                <Input id={variableName} type="file" accept="image/*" onChange={async (e) => {
+                                                                {/* Hidden native input to avoid showing 'No file selected' */}
+                                                                <Input id={`${variableName}-file`} type="file" accept="image/*" className="hidden" onChange={async (e) => {
                                                                     const file = e.target.files?.[0];
                                                                     if (!file) return;
                                                                     try {
@@ -1095,11 +1117,26 @@ export default function FillTemplatePage() {
                                                                     }
                                                                 }} />
                                                                 <Button variant="outline" size="sm" type="button" onClick={() => {
-                                                                    setImageEditorFor(variableName);
-                                                                    setImageEditorInitialUrl(resolveUploadsUrl(variableValues[variableName] || undefined));
-                                                                }}>Edit image</Button>
+                                                                    const el = document.getElementById(`${variableName}-file`) as HTMLInputElement | null;
+                                                                    el?.click();
+                                                                }}>
+                                                                    {variableValues[variableName] ? 'Change Photo' : 'Choose file'}
+                                                                </Button>
                                                                 {variableValues[variableName] && (
-                                                                    <a href={resolveUploadsUrl(variableValues[variableName])} target="_blank" rel="noreferrer" className="text-xs underline text-muted-foreground">View</a>
+                                                                    <Button variant="outline" size="sm" type="button" onClick={() => {
+                                                                        setImageEditorFor(variableName);
+                                                                        setImageEditorInitialUrl(resolveUploadsUrl(variableValues[variableName] || undefined));
+                                                                    }}>Edit image</Button>
+                                                                )}
+                                                                {variableValues[variableName] && (
+                                                                    <Button variant="destructive" size="sm" type="button" onClick={() => {
+                                                                        setRemoveImageVar(variableName);
+                                                                    }}>
+                                                                        Remove
+                                                                    </Button>
+                                                                )}
+                                                                {variableValues[variableName] ? null : (
+                                                                    <span className="text-xs text-muted-foreground">No file selected</span>
                                                                 )}
                                                             </div>
                                                             {imp.description && (
@@ -1264,10 +1301,11 @@ export default function FillTemplatePage() {
                             );
                         })()}
                         {/* Appendix section */}
-                        <AppendixManager reportId={reportId} />
+                        <AppendixManager reportId={reportId} onUploadingChange={setIsUploadingAppendix} />
                         <div className="flex justify-end gap-2 pt-2">
                             <Button
                                 variant="outline"
+                                disabled={isUploadingAppendix}
                                 onClick={async () => {
                                     const id = reportId || (await createReportIfNeeded());
                                     if (!id) return toast.error('Failed to save report');
@@ -1290,7 +1328,7 @@ export default function FillTemplatePage() {
                                 )}
                             </Button>
                             <Button
-                                disabled={isPreviewing}
+                                disabled={isPreviewing || isUploadingAppendix}
                                 onClick={async () => {
                                     if (isPreviewing) return;
                                     setIsPreviewing(true);
@@ -1397,14 +1435,39 @@ export default function FillTemplatePage() {
                 </DialogContent>
             </Dialog>
 
+            {/* Confirm remove image */}
+            <AlertDialog open={!!removeImageVar} onOpenChange={(open) => { if (!open) setRemoveImageVar(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Remove photo?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will remove the selected photo from this report. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setRemoveImageVar(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (!removeImageVar) return;
+                                handleVariableChange(removeImageVar, "");
+                                setRemoveImageVar(null);
+                                toast.success("Photo removed");
+                            }}
+                        >
+                            Remove
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
             {/* Create New Template Modal */}
             <Dialog open={!!newTplForVarId} onOpenChange={(open) => { if (!open) { setNewTplForVarId(null); setNewTplText(""); setNewTplForVarName(""); } }}>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Create new template</DialogTitle>
                         <DialogDescription>Save your current text as a reusable template for this variable.</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-3">
+                    <div className="space-y-3 overflow-auto min-h-0 pr-1">
                         <div>
                             <Label className="text-xs text-muted-foreground">Variable</Label>
                             <div className="text-sm font-medium">{newTplForVarName}</div>
