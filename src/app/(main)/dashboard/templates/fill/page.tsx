@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X, Calendar as CalendarIcon } from "lucide-react";
+import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X, Calendar as CalendarIcon, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 import AppendixManager from "@/components/appendix/appendix-manager";
@@ -996,10 +996,17 @@ export default function FillTemplatePage() {
                                             return (
                                                 <div key={variableName} className="space-y-2">
                                                     <div className="flex items-center justify-between gap-2">
-                                                        <Label htmlFor={variableName}>
-                                                            {label}
-                                                            {imp.isRequired && <span className="text-destructive ml-1">*</span>}
-                                                        </Label>
+                                                        <div className="flex items-center gap-2">
+                                                            <Label htmlFor={variableName}>
+                                                                {label}
+                                                                {imp.isRequired && <span className="text-destructive ml-1">*</span>}
+                                                            </Label>
+                                                            {label && label.toLowerCase() === 'table of comparative sales photo' && (
+                                                                <a href="https://landator.com/evaluate/offline#/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-primary hover:underline">
+                                                                    <ExternalLink className="h-4 w-4" />
+                                                                </a>
+                                                            )}
+                                                        </div>
                                                         <div className="flex items-center gap-2">
                                                             {/* Admin 'Insert from template' removed; keep only My Templates */}
                                                             {imp.type === 'text' && (
@@ -1260,10 +1267,17 @@ export default function FillTemplatePage() {
                                         return (
                                             <div key={variableName} className="space-y-2">
                                                 <div className="flex items-center justify-between gap-2">
-                                                    <Label htmlFor={variableName}>
-                                                        {label}
-                                                        {(cb as any).isRequired && <span className="text-destructive ml-1">*</span>}
-                                                    </Label>
+                                                    <div className="flex items-center gap-2">
+                                                        <Label htmlFor={variableName}>
+                                                            {label}
+                                                            {(cb as any).isRequired && <span className="text-destructive ml-1">*</span>}
+                                                        </Label>
+                                                        {label && label.toLowerCase() === 'table of comparative sales photo' && (
+                                                            <a href="https://landator.com/evaluate/offline#/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-primary hover:underline">
+                                                                <ExternalLink className="h-4 w-4" />
+                                                            </a>
+                                                        )}
+                                                    </div>
                                                     {/* Admin 'Insert from template' removed */}
                                                 </div>
                                                 {(cb as any).description && (
