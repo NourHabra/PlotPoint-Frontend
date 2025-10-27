@@ -314,6 +314,49 @@ export default function FillTemplatePage() {
 
     const generateId = () => Math.random().toString(36).slice(2);
 
+    // Returns a stable key for a variable across repeated occurrences
+    const getCanonicalVarKeyFromImported = (imp: ImportedVariable) => {
+        const t = (imp as any)?.type as string | undefined;
+        if (t === 'kml' && (imp as any)?.kmlField) return `kml:${String((imp as any).kmlField)}`;
+        return String((imp as any)?.name || (imp as any)?.id || '');
+    };
+
+    // Given a canonical key, find any legacy per-instance variable ids for this variable
+    const getLegacyIdsForKey = (variableKey: string): string[] => {
+        const out: string[] = [];
+        const tplVars = (selectedTemplate as any)?.variables as Array<any> | undefined;
+        if (!Array.isArray(tplVars)) return out;
+        // kml:<field> maps to all imported variables with same kmlField
+        const kmlMatch = variableKey.startsWith('kml:') ? variableKey.slice(4) : null;
+        tplVars.forEach(v => {
+            if (!v) return;
+            if (kmlMatch) {
+                if ((v as any).type === 'kml' && String((v as any).kmlField) === kmlMatch) out.push(String((v as any).id));
+            } else {
+                if (String((v as any).name) === variableKey) out.push(String((v as any).id));
+            }
+        });
+        return out;
+    };
+
+    const getMergedUserSnippets = (variableKey: string) => {
+        const arr = userTemplate?.variableTextTemplates || [];
+        const legacyIds = getLegacyIdsForKey(variableKey);
+        const buckets = arr.filter(v => v.variableId === variableKey || legacyIds.includes(v.variableId));
+        if (buckets.length === 0) return null;
+        const merged = buckets.flatMap(b => b.snippets || []);
+        return { variableId: variableKey, snippets: merged } as { variableId: string; snippets: Array<{ id: string; text: string }> };
+    };
+
+    const getMergedUserSelectOptions = (variableKey: string) => {
+        const arr = (userTemplate as any)?.variableSelectOptions || [];
+        const legacyIds = getLegacyIdsForKey(variableKey);
+        const buckets = arr.filter((v: any) => v.variableId === variableKey || legacyIds.includes(v.variableId));
+        if (buckets.length === 0) return null;
+        const merged = ([] as Array<{ id: string; value: string }>).concat(...buckets.map((b: any) => b.options || []));
+        return { variableId: variableKey, options: merged } as { variableId: string; options: Array<{ id: string; value: string }> };
+    };
+
     const loadUserTemplateFor = async (tplId: string) => {
         try {
             setUserTplLoading(true);
@@ -336,20 +379,20 @@ export default function FillTemplatePage() {
     };
 
     const getUserSnippetsForVar = (variableId: string) => {
-        const arr = userTemplate?.variableTextTemplates || [];
-        return arr.find(v => v.variableId === variableId) || null;
+        return getMergedUserSnippets(variableId);
     };
 
     const getUserSelectOptionsForVar = (variableId: string) => {
-        const arr = (userTemplate as any)?.variableSelectOptions || [];
-        return arr.find((v: any) => v.variableId === variableId) || null;
+        return getMergedUserSelectOptions(variableId);
     };
 
     const upsertUserVarSnippets = async (variableId: string, updater: (curr: { variableId: string; snippets: Array<{ id: string; text: string }> } | null) => { variableId: string; snippets: Array<{ id: string; text: string }> }) => {
         if (!userTemplate) return;
         const current = getUserSnippetsForVar(variableId);
         const nextEntry = updater(current ? { variableId: current.variableId, snippets: [...current.snippets] } : null);
-        const others = (userTemplate.variableTextTemplates || []).filter(v => v.variableId !== variableId);
+        const legacyIds = getLegacyIdsForKey(variableId);
+        const exclude = new Set<string>([variableId, ...legacyIds]);
+        const others = (userTemplate.variableTextTemplates || []).filter(v => !exclude.has(v.variableId));
         const updated = { ...userTemplate, variableTextTemplates: [...others, nextEntry] } as UserTemplateDto;
         setUserTemplate(updated);
         try {
@@ -365,7 +408,9 @@ export default function FillTemplatePage() {
         if (!userTemplate) return;
         const current = getUserSelectOptionsForVar(variableId);
         const nextEntry = updater(current ? { variableId: current.variableId, options: [...current.options] } : null);
-        const others = ((userTemplate as any).variableSelectOptions || []).filter((v: any) => v.variableId !== variableId);
+        const legacyIds = getLegacyIdsForKey(variableId);
+        const exclude = new Set<string>([variableId, ...legacyIds]);
+        const others = ((userTemplate as any).variableSelectOptions || []).filter((v: any) => !exclude.has(v.variableId));
         const updated = { ...(userTemplate as any), variableSelectOptions: [...others, nextEntry] } as UserTemplateDto & { variableSelectOptions: Array<{ variableId: string; options: Array<{ id: string; value: string }> }> };
         setUserTemplate(updated as any);
         try {
@@ -966,7 +1011,8 @@ export default function FillTemplatePage() {
                                                                     </DropdownMenuTrigger>
                                                                     <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto w-[400px]">
                                                                         {(() => {
-                                                                            const u = getUserSnippetsForVar(imp.id);
+                                                                            const canonicalKey = getCanonicalVarKeyFromImported(imp);
+                                                                            const u = getUserSnippetsForVar(canonicalKey);
                                                                             const items = u?.snippets || [];
                                                                             return (
                                                                                 <div className="max-w-[600px]">
@@ -979,7 +1025,7 @@ export default function FillTemplatePage() {
                                                                                                 <div className="flex-1">
                                                                                                     <div className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-w-[560px]">{sn.text}</div>
                                                                                                 </div>
-                                                                                                <button className="text-xs text-destructive" onClick={(e) => { e.stopPropagation(); deleteSnippetForVar(imp.id, sn.id); }}>
+                                                                                                <button className="text-xs text-destructive" onClick={(e) => { e.stopPropagation(); deleteSnippetForVar(canonicalKey, sn.id); }}>
                                                                                                     <Trash2 className="h-4 w-4" />
                                                                                                 </button>
                                                                                             </DropdownMenuItem>
@@ -987,7 +1033,7 @@ export default function FillTemplatePage() {
                                                                                         </div>
                                                                                     ))}
                                                                                     <div className="h-px bg-border my-1" />
-                                                                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setNewTplForVarId(imp.id); setNewTplForVarName(variableName); setNewTplText(String(variableValues[variableName] || '')); }}>
+                                                                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setNewTplForVarId(canonicalKey); setNewTplForVarName(variableName); setNewTplText(String(variableValues[variableName] || '')); }}>
                                                                                         <Plus className="h-4 w-4 mr-2" /> Create new template
                                                                                     </DropdownMenuItem>
                                                                                 </div>
@@ -1003,7 +1049,8 @@ export default function FillTemplatePage() {
                                                                     </DropdownMenuTrigger>
                                                                     <DropdownMenuContent align="end" className="p-2 space-y-2 w-[360px]">
                                                                         {(() => {
-                                                                            const u = getUserSelectOptionsForVar(imp.id);
+                                                                            const canonicalKey = getCanonicalVarKeyFromImported(imp);
+                                                                            const u = getUserSelectOptionsForVar(canonicalKey);
                                                                             const items = u?.options || [];
                                                                             return (
                                                                                 <div className="max-w-[320px]">
@@ -1015,8 +1062,9 @@ export default function FillTemplatePage() {
                                                                                             <div className="text-sm truncate">{opt.value}</div>
                                                                                             <button className="text-xs text-destructive" onClick={(e) => {
                                                                                                 e.stopPropagation();
-                                                                                                upsertUserVarSelectOptions(imp.id, (curr) => {
-                                                                                                    const base = curr || { variableId: imp.id, options: [] };
+                                                                                                const canonicalKey = getCanonicalVarKeyFromImported(imp);
+                                                                                                upsertUserVarSelectOptions(canonicalKey, (curr) => {
+                                                                                                    const base = curr || { variableId: canonicalKey, options: [] };
                                                                                                     return { variableId: base.variableId, options: base.options.filter((o: { id: string; value: string }) => o.id !== opt.id) };
                                                                                                 });
                                                                                             }}>
@@ -1033,8 +1081,9 @@ export default function FillTemplatePage() {
                                                                                                 const v = (target.value || '').trim();
                                                                                                 if (!v) return;
                                                                                                 const id = generateId();
-                                                                                                upsertUserVarSelectOptions(imp.id, (curr) => {
-                                                                                                    const base = curr || { variableId: imp.id, options: [] };
+                                                                                                const canonicalKey = getCanonicalVarKeyFromImported(imp);
+                                                                                                upsertUserVarSelectOptions(canonicalKey, (curr) => {
+                                                                                                    const base = curr || { variableId: canonicalKey, options: [] };
                                                                                                     return { variableId: base.variableId, options: [...base.options, { id, value: v }] };
                                                                                                 });
                                                                                                 target.value = '';
@@ -1046,8 +1095,9 @@ export default function FillTemplatePage() {
                                                                                             const v = String((wrapper as any).value).trim();
                                                                                             if (!v) return;
                                                                                             const id = generateId();
-                                                                                            upsertUserVarSelectOptions(imp.id, (curr) => {
-                                                                                                const base = curr || { variableId: imp.id, options: [] };
+                                                                                            const canonicalKey = getCanonicalVarKeyFromImported(imp);
+                                                                                            upsertUserVarSelectOptions(canonicalKey, (curr) => {
+                                                                                                const base = curr || { variableId: canonicalKey, options: [] };
                                                                                                 return { variableId: base.variableId, options: [...base.options, { id, value: v }] };
                                                                                             });
                                                                                             (wrapper as any).value = '';
@@ -1074,7 +1124,8 @@ export default function FillTemplatePage() {
                                                             >
                                                                 <option value="">Select...</option>
                                                                 {(() => {
-                                                                    const u = getUserSelectOptionsForVar(imp.id);
+                                                                    const canonicalKey = getCanonicalVarKeyFromImported(imp);
+                                                                    const u = getUserSelectOptionsForVar(canonicalKey);
                                                                     const userOpts = (u?.options || []).map((o: { id: string; value: string }) => o.value);
                                                                     const all = Array.from(new Set([...(imp.options || []), ...userOpts]));
                                                                     return all.map((opt) => (
