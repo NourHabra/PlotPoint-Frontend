@@ -274,9 +274,17 @@ export default function FillTemplatePage() {
 
     // Initial PDF preview once a template is selected and values are ready (Step 1 preview)
     // Stage 1: show preview for selected template
+    // Skip generation if template has previewPdfPath (use stored preview instead)
     useEffect(() => {
         if (selectedTemplate && step === 1) {
-            refreshPdfPreview();
+            // Only generate preview if template doesn't have a stored preview PDF
+            // If previewPdfPath exists, the UI will display it directly without generation
+            const hasPreviewPath = selectedTemplate.previewPdfPath && String(selectedTemplate.previewPdfPath).trim().length > 0;
+            if (hasPreviewPath) {
+                console.log('[Preview] Using stored preview PDF:', selectedTemplate.previewPdfPath, 'for template:', selectedTemplate.name);
+            } else {
+                refreshPdfPreview();
+            }
         }
 
     }, [selectedTemplate, step]);
@@ -493,9 +501,25 @@ export default function FillTemplatePage() {
     };
 
     // Stage 1 preview only; no debounced preview refresh in later stages
+    // Only generate if template doesn't have previewPdfPath OR if user has filled values
     useEffect(() => {
         if (step !== 1) return;
         if (!selectedTemplate) return;
+
+        // If template has stored preview PDF, check if user has filled any values
+        // Only generate new preview if values have been filled (not just template selection)
+        const hasPreviewPath = selectedTemplate.previewPdfPath && String(selectedTemplate.previewPdfPath).trim().length > 0;
+        if (hasPreviewPath) {
+            const hasValues = Object.keys(variableValues).some(key => {
+                const value = variableValues[key];
+                return value && String(value).trim().length > 0;
+            });
+            // Skip generation if no values are filled - use stored preview
+            if (!hasValues) {
+                return;
+            }
+        }
+
         if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
         previewDebounceRef.current = setTimeout(() => {
             refreshPdfPreview();
