@@ -27,6 +27,8 @@ export function authMiddleware(req: NextRequest) {
         "/dashboard/users",
         "/dashboard/reports/all",
         "/dashboard/admin/tickets",
+        "/dashboard/admin/generation-stats",
+        "/dashboard/admin/changelog",
       ];
       const userWhitelist = [
         "/dashboard/templates/fill",
