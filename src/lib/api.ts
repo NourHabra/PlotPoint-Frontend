@@ -294,6 +294,11 @@ export const changelogApi = {
   delete: (id: string) => apiRequest(`/changelog/${id}`, { method: 'DELETE' }),
 };
 
+// Generation Stats API (admin only)
+export const generationStatsApi = {
+  list: (page = 1, limit = 25) => apiRequest(`/admin/generation-stats?page=${encodeURIComponent(page)}&limit=${encodeURIComponent(limit)}`),
+};
+
 // Dashboard API
 export const dashboardApi = {
   getSummary: () => apiRequest('/dashboard/reports/summary'),

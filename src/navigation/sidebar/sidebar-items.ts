@@ -122,6 +122,24 @@ export const sidebarItems: NavGroup[] = [
   },
   {
     id: 4,
+    label: "System",
+    items: [
+      {
+        title: "Generation Stats",
+        url: "/dashboard/admin/generation-stats",
+        icon: ChartBar,
+        roles: ['Admin'],
+      },
+      {
+        title: "Changelog",
+        url: "/dashboard/admin/changelog",
+        icon: FileText,
+        roles: ['Admin'],
+      },
+    ],
+  },
+  {
+    id: 5,
     label: "",
     alignBottom: true,
     items: [

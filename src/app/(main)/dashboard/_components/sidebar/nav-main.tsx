@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { PlusCircleIcon, MailIcon, ChevronRight } from "lucide-react";
@@ -26,8 +27,8 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { type NavGroup, type NavMainItem } from "@/navigation/sidebar/sidebar-items";
 import { ticketApi } from "@/lib/api";
+import { type NavGroup, type NavMainItem } from "@/navigation/sidebar/sidebar-items";
 
 interface NavMainProps {
   readonly items: readonly NavGroup[];
@@ -180,12 +181,15 @@ export function NavMain({ items }: NavMainProps) {
 
   return (
     <>
-      {items.map((group) => (
-        <SidebarGroup key={group.id}>
-          {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
-          <SidebarGroupContent className={`flex flex-col gap-2 ${group.alignBottom ? 'mt-auto' : ''}`}>
-            <SidebarMenu>
-              {group.items.filter((it) => !it.roles || it.roles.includes(role as any)).map((item) => {
+      {items.map((group) => {
+        const visibleItems = group.items.filter((it) => !it.roles || it.roles.includes(role as any));
+        if (!visibleItems.length) return null;
+        return (
+          <SidebarGroup key={group.id}>
+            {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+            <SidebarGroupContent className={`flex flex-col gap-2 ${group.alignBottom ? 'mt-auto' : ''}`}>
+              <SidebarMenu>
+                {visibleItems.map((item) => {
                 if (state === "collapsed" && !isMobile) {
                   // If no subItems, just render the button as a link
                   if (!item.subItems) {
@@ -238,11 +242,12 @@ export function NavMain({ items }: NavMainProps) {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        );
+      })}
     </>
   );
 }
