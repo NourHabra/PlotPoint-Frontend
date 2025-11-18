@@ -75,6 +75,9 @@ export default function FillTemplatePage() {
     const [kmlData, setKmlData] = useState<Record<string, any>>({});
     const hasKmlData = Object.keys(kmlData || {}).length > 0;
     const kmlInputRef = useRef<HTMLInputElement | null>(null);
+    const [pdfExtractedValues, setPdfExtractedValues] = useState<Record<string, string>>({});
+    const [isExtractingPdf, setIsExtractingPdf] = useState<boolean>(false);
+    const pdfInputRef = useRef<HTMLInputElement | null>(null);
 
     const injectKmlIntoVariables = (incoming: Record<string, any>) => {
         if (!selectedTemplate || !incoming) return;
@@ -220,6 +223,61 @@ export default function FillTemplatePage() {
         await handleKmlFile(file);
     };
 
+    async function handlePdfFile(file: File) {
+        setIsExtractingPdf(true);
+        try {
+            const result = await templateApi.extractPdf(file);
+            const extractedValue = result.extractedValue;
+            const label = "ΑΡ. ΕΚΤΙΜΗΣΗΣ";
+
+            // Update extracted values state
+            setPdfExtractedValues(prev => ({
+                ...prev,
+                [label]: extractedValue
+            }));
+
+            // Update report values with the extracted value under "ΑΡ. ΕΚΤΙΜΗΣΗΣ"
+            setVariableValues(prev => ({
+                ...prev,
+                [label]: extractedValue
+            }));
+
+            // Save to report if it exists
+            if (reportId) {
+                try {
+                    await reportApi.update(reportId, {
+                        values: {
+                            ...variableValues,
+                            [label]: extractedValue
+                        }
+                    });
+                } catch (err) {
+                    console.error('Failed to save PDF extracted value to report:', err);
+                }
+            }
+
+            toast.success(`Extracted ${label}: ${extractedValue}`);
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to extract value from PDF');
+        } finally {
+            setIsExtractingPdf(false);
+        }
+    }
+
+    const handlePdfDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        if (!e.dataTransfer?.files?.[0]) return;
+        const file = e.dataTransfer.files[0];
+        if (!file.name.toLowerCase().endsWith('.pdf')) return toast.error('Please drop a .pdf file');
+        await handlePdfFile(file);
+    };
+
+    const handlePdfSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        await handlePdfFile(file);
+    };
+
     useEffect(() => {
         loadTemplates();
     }, []);
@@ -234,7 +292,14 @@ export default function FillTemplatePage() {
                     const tpl = await templateApi.getById((report as any).templateId);
                     setSelectedTemplate(tpl as any);
                     try { if ((tpl as any)._id) await loadUserTemplateFor(((tpl as any)._id) as string); } catch (_) { }
-                    setVariableValues((report as any).values || {});
+                    const reportValues = (report as any).values || {};
+                    setVariableValues(reportValues);
+                    // Load PDF extracted values if present
+                    const extractedValues: Record<string, string> = {};
+                    if (reportValues["ΑΡ. ΕΚΤΙΜΗΣΗΣ"]) {
+                        extractedValues["ΑΡ. ΕΚΤΙΜΗΣΗΣ"] = reportValues["ΑΡ. ΕΚΤΙΜΗΣΗΣ"];
+                    }
+                    setPdfExtractedValues(extractedValues);
                     // Restore checklist progress from saved report
                     try {
                         const cp = Array.isArray((report as any).checklistProgress) ? (report as any).checklistProgress : [];
@@ -974,17 +1039,134 @@ export default function FillTemplatePage() {
                                 ))}
                             </div>
                         )}
-                        <div className="flex items-center justify-between mt-6">
-                            {hasKmlData && (
+                        {hasKmlData && (
+                            <div className="mt-6">
                                 <Button variant="outline" onClick={() => kmlInputRef.current?.click()}>Upload another KML</Button>
-                            )}
-                            <Button onClick={async () => {
-                                const id = await createReportIfNeeded();
-                                if (!id) return toast.error('Failed to save report');
-                                try { await reportApi.update(id, { kmlData }); } catch { }
-                                setStep(3);
-                            }}>Continue</Button>
-                        </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* PDF Upload Section (appears after KML upload) */}
+            {selectedTemplate && selectedTemplate.requiresKml && step === 2 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Upload PDF</CardTitle>
+                        <CardDescription>
+                            Extract values from a PDF and save it to the report.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <input ref={pdfInputRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfSelect} />
+                        {Object.keys(pdfExtractedValues).length === 0 && (
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); }}
+                                onDrop={handlePdfDrop}
+                                className="border-2 border-dashed rounded-md p-8 text-center cursor-pointer"
+                                onClick={() => pdfInputRef.current?.click()}
+                            >
+                                {isExtractingPdf ? (
+                                    <div className="flex items-center justify-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <p className="text-sm text-muted-foreground">Extracting values from PDF...</p>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">Drop PDF here or click to select</p>
+                                )}
+                            </div>
+                        )}
+                        {Object.keys(pdfExtractedValues).length > 0 && (
+                            <div className="mt-4 p-4 bg-muted rounded-md">
+                                <div className="text-sm">
+                                    <div className="text-muted-foreground mb-2">Extracted Values:</div>
+                                    <div className="space-y-1">
+                                        {Object.entries(pdfExtractedValues).map(([label, value]) => (
+                                            <div key={label} className="pl-2">
+                                                <span className="font-medium">{label}:</span>{' '}
+                                                <span className="break-words">{value}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {Object.keys(pdfExtractedValues).length > 0 && (
+                            <div className="mt-6">
+                                <Button variant="outline" onClick={() => pdfInputRef.current?.click()} disabled={isExtractingPdf}>
+                                    Upload another PDF
+                                </Button>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Continue button for KML templates (appears after both KML and PDF sections) */}
+            {selectedTemplate && selectedTemplate.requiresKml && step === 2 && (
+                <div className="flex justify-end mt-6">
+                    <Button onClick={async () => {
+                        const id = await createReportIfNeeded();
+                        if (!id) return toast.error('Failed to save report');
+                        try {
+                            await reportApi.update(id, {
+                                kmlData,
+                                values: {
+                                    ...variableValues,
+                                    ...pdfExtractedValues
+                                }
+                            });
+                        } catch { }
+                        setStep(3);
+                    }} disabled={isExtractingPdf}>
+                        Continue
+                    </Button>
+                </div>
+            )}
+
+            {/* PDF Upload Section for non-KML templates */}
+            {selectedTemplate && !selectedTemplate.requiresKml && step === 1 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Upload PDF</CardTitle>
+                        <CardDescription>
+                            Extract value from PDF and save it to the report.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <input ref={pdfInputRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfSelect} />
+                        {Object.keys(pdfExtractedValues).length === 0 && (
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); }}
+                                onDrop={handlePdfDrop}
+                                className="border-2 border-dashed rounded-md p-8 text-center cursor-pointer"
+                                onClick={() => pdfInputRef.current?.click()}
+                            >
+                                {isExtractingPdf ? (
+                                    <div className="flex items-center justify-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <p className="text-sm text-muted-foreground">Extracting value from PDF...</p>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted-foreground">Drop PDF here or click to select</p>
+                                )}
+                            </div>
+                        )}
+                        {Object.keys(pdfExtractedValues).length > 0 && (
+                            <div className="mt-4 p-4 bg-muted rounded-md">
+                                <div className="text-sm">
+                                    <div className="text-muted-foreground mb-2">Extracted Values:</div>
+                                    <div className="space-y-1">
+                                        {Object.entries(pdfExtractedValues).map(([label, value]) => (
+                                            <div key={label} className="pl-2">
+                                                <span className="font-medium">{label}:</span>{' '}
+                                                <span className="break-words">{value}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             )}

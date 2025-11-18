@@ -155,6 +155,31 @@ export const templateApi = {
     return res.json() as Promise<{ filename: string; url: string }>;
   },
 
+  // Extract value from PDF (for "Αρ. Εκτίμησης")
+  extractPdf: async (file: File) => {
+    const url = `${API_BASE_URL}/uploads/extract-pdf`;
+    const form = new FormData();
+    form.append('file', file);
+    const authHeaders = (() => {
+      if (typeof window === 'undefined') return {} as Record<string, string>;
+      try {
+        const raw = localStorage.getItem('auth');
+        if (!raw) return {} as Record<string, string>;
+        const a = JSON.parse(raw);
+        if (a?.token) return { Authorization: `Bearer ${a.token}` } as Record<string, string>;
+        return {} as Record<string, string>;
+      } catch {
+        return {} as Record<string, string>;
+      }
+    })();
+    const res = await fetch(url, { method: 'POST', body: form, headers: authHeaders });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new ApiError(res.status, data.message ?? 'PDF extraction failed');
+    }
+    return res.json() as Promise<{ extractedValue: string; searchText: string }>;
+  },
+
   // Generate report
   generate: async (id: string, values: Record<string, any>, output: 'docx' | 'pdf', kmlData?: Record<string, any>) => {
     const url = `${API_BASE_URL}/templates/${id}/generate`;
