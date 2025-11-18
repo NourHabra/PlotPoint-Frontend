@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X, Calendar as CalendarIcon, ExternalLink } from "lucide-react";
+import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X, Calendar as CalendarIcon, ExternalLink, ChevronsUpDown, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import AppendixManager from "@/components/appendix/appendix-manager";
@@ -13,10 +13,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 //
@@ -74,10 +76,73 @@ export default function FillTemplatePage() {
     const totalSteps = selectedTemplate?.requiresKml ? 4 : 3;
     const [kmlData, setKmlData] = useState<Record<string, any>>({});
     const hasKmlData = Object.keys(kmlData || {}).length > 0;
-    const kmlInputRef = useRef<HTMLInputElement | null>(null);
+
+    // KML Form Fields State
+    const [eparchia, setEparchia] = useState<string>("");
+    const [dimos, setDimos] = useState<string>("");
+    const [enoria, setEnoria] = useState<string>("");
+    const [fyllo, setFyllo] = useState<string>("");
+    const [sxedio, setSxedio] = useState<string>("");
+    const [tmima, setTmima] = useState<string>("");
+    const [arithmosTemaxiou, setArithmosTemaxiou] = useState<string>("");
+
+    // Region data structure with codes
+    interface RegionOption {
+        vilCode: number;
+        distCode: number;
+        name: string;
+    }
+
+    // Dropdown options (will be populated from API later)
+    const [dimosOptions, setDimosOptions] = useState<RegionOption[]>([]);
+    const [dimosOpen, setDimosOpen] = useState(false);
+    const [eparchiaOpen, setEparchiaOpen] = useState(false);
+    const [enoriaOpen, setEnoriaOpen] = useState(false);
+    const [enoriaOptions, setEnoriaOptions] = useState<string[]>([]);
+    const [fylloOptions, setFylloOptions] = useState<string[]>([]);
+    const [sxedioOptions, setSxedioOptions] = useState<string[]>([]);
+    const [tmimaOptions, setTmimaOptions] = useState<string[]>([]);
+
+    // Store selected region codes
+    const [selectedRegionCodes, setSelectedRegionCodes] = useState<{ vilCode: number; distCode: number } | null>(null);
+    const [qrtrCode, setQrtrCode] = useState<number | null>(null);
+
+    // Province code to name mapping
+    const eparchiaCodeToName: Record<string, string> = {
+        "3D3": "ΑΜΜΟΧΩΣΤΟΣ",
+        "3D2": "ΚΕΡΥΝΕΙΑ",
+        "3D4": "ΛΑΡΝΑΚΑ",
+        "3D5": "ΛΕΜΕΣΟΣ",
+        "3D1": "ΛΕΥΚΩΣΙΑ",
+        "3D6": "ΠΑΦΟΣ"
+    };
+
+    // Province options for dropdown (using codes as values)
+    const eparchiaOptions = Object.entries(eparchiaCodeToName).map(([code, name]) => ({
+        code,
+        name
+    }));
+
     const [pdfExtractedValues, setPdfExtractedValues] = useState<Record<string, string>>({});
     const [isExtractingPdf, setIsExtractingPdf] = useState<boolean>(false);
     const pdfInputRef = useRef<HTMLInputElement | null>(null);
+
+    // Build kmlData from form fields
+    const buildKmlDataFromForm = (): Record<string, any> => {
+        return {
+            eparchia: eparchia || "", // This will be the code (e.g., "3D3")
+            eparchia_name: eparchia ? eparchiaCodeToName[eparchia] || "" : "", // Province name for display
+            dimos: dimos || "",
+            dimos_vil_code: selectedRegionCodes?.vilCode || "",
+            dimos_dist_code: selectedRegionCodes?.distCode || "",
+            qrtr_code: qrtrCode !== null && qrtrCode !== undefined ? qrtrCode : "",
+            enoria: enoria || "",
+            fyllo: fyllo || "",
+            sxedio: sxedio || "",
+            tmima: tmima || "",
+            arithmos_temaxiou: arithmosTemaxiou || "",
+        };
+    };
 
     const injectKmlIntoVariables = (incoming: Record<string, any>) => {
         if (!selectedTemplate || !incoming) return;
@@ -107,120 +172,295 @@ export default function FillTemplatePage() {
         });
     };
 
+    // Helper functions to clear cascading fields
+    const clearEparchia = () => {
+        setEparchia("");
+        setDimosOptions([]);
+        setDimos("");
+        setSelectedRegionCodes(null);
+        setQrtrCode(null);
+        setEnoria("");
+        setFyllo("");
+        setSxedio("");
+        setTmima("");
+        setArithmosTemaxiou("");
+    };
+
+    const clearDimos = () => {
+        setDimos("");
+        setSelectedRegionCodes(null);
+        setQrtrCode(null);
+        setEnoria("");
+        setEnoriaOptions([]);
+        setFyllo("");
+        setSxedio("");
+        setTmima("");
+        setArithmosTemaxiou("");
+    };
+
+    const clearEnoria = () => {
+        setEnoria("");
+        setFyllo("");
+        setSxedio("");
+        setTmima("");
+        setArithmosTemaxiou("");
+    };
+
+    const clearFyllo = () => {
+        setFyllo("");
+        setFylloOptions([]);
+        setSxedio("");
+        setTmima("");
+        setArithmosTemaxiou("");
+    };
+
+    const clearSxedio = () => {
+        setSxedio("");
+        setSxedioOptions([]);
+        setTmima(""); // Clear section when plan is cleared
+        setArithmosTemaxiou("");
+    };
+
+    const clearTmima = () => {
+        setTmima("");
+        setArithmosTemaxiou("");
+    };
+
+    // Fetch data when province is selected
+    useEffect(() => {
+        if (!eparchia) {
+            setDimosOptions([]);
+            setDimos("");
+            setSelectedRegionCodes(null);
+            return;
+        }
+
+        // Extract the numeric part from the province code (e.g., "3D1" -> "1", "3D3" -> "3")
+        const provinceCode = eparchia.replace(/^3D/, '');
+        const apiUrl = `https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/11/query?f=json&outFields=VIL_CODE,DIST_CODE,VIL_NM_G&returnDistinctValues=false&returnGeometry=false&where=DIST_CODE%3D${provinceCode}`;
+
+        fetch(apiUrl)
+            .then(response => response.json())
+            .then(data => {
+                console.log('Province API Response:', data);
+
+                // Parse the response and extract region options
+                if (data.features && Array.isArray(data.features)) {
+                    const regions: RegionOption[] = data.features.map((feature: any) => ({
+                        vilCode: feature.attributes.VIL_CODE,
+                        distCode: feature.attributes.DIST_CODE,
+                        name: feature.attributes.VIL_NM_G
+                    }));
+
+                    // Sort by name for better UX
+                    regions.sort((a, b) => a.name.localeCompare(b.name, 'el'));
+
+                    setDimosOptions(regions);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching province data:', error);
+                toast.error('Failed to fetch regions');
+            });
+    }, [eparchia]);
+
+    // Fetch data when region is selected
+    useEffect(() => {
+        console.log('Region useEffect triggered:', { selectedRegionCodes, dimos });
+
+        if (!selectedRegionCodes || !dimos) {
+            console.log('Region useEffect: Missing required data, clearing QRTR_CODE');
+            setQrtrCode(null);
+            setEnoria("");
+            setEnoriaOptions([]);
+            return;
+        }
+
+        // Set Parish to "0" when region is selected
+        setEnoria("0");
+        setEnoriaOptions(["0"]);
+
+        const { distCode, vilCode } = selectedRegionCodes;
+        const apiUrl = `https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/10/query?f=json&outFields=QRTR_CODE,VIL_CODE,DIST_CODE,QRTR_NM_G&returnDistinctValues=false&returnGeometry=false&where=DIST_CODE%3D${distCode}+and+VIL_CODE%3D${vilCode}`;
+
+        console.log('Making Region API call:', apiUrl);
+
+        fetch(apiUrl)
+            .then(response => {
+                console.log('Region API Response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Region API Response:', data);
+
+                // Extract QRTR_CODE from the response
+                if (data.features && Array.isArray(data.features) && data.features.length > 0) {
+                    const qrtrCodeValue = data.features[0].attributes?.QRTR_CODE;
+                    console.log('Extracted QRTR_CODE:', qrtrCodeValue);
+                    if (qrtrCodeValue !== undefined && qrtrCodeValue !== null) {
+                        setQrtrCode(qrtrCodeValue);
+                    }
+                } else {
+                    console.log('No features found in Region API response');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching region data:', error);
+                setQrtrCode(null);
+            });
+    }, [selectedRegionCodes, dimos]);
+
+    // Fetch sheet data when QRTR_CODE is available
+    useEffect(() => {
+        console.log('Sheet useEffect triggered:', { selectedRegionCodes, qrtrCode });
+
+        if (!selectedRegionCodes || qrtrCode === null || qrtrCode === undefined) {
+            console.log('Sheet useEffect: Missing required data, clearing sheet options');
+            setFylloOptions([]);
+            setFyllo("");
+            return;
+        }
+
+        const { distCode, vilCode } = selectedRegionCodes;
+        const apiUrl = `https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/0/query?f=json&outFields=SHEET,SHEET,DIST_CODE,VIL_CODE,QRTR_CODE&returnDistinctValues=true&returnGeometry=false&where=DIST_CODE%3D${distCode}+and+VIL_CODE%3D${vilCode}+and+QRTR_CODE%3D${qrtrCode}`;
+
+        console.log('Making Sheet API call:', apiUrl);
+
+        fetch(apiUrl)
+            .then(response => {
+                console.log('Sheet API Response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Sheet API Response:', data);
+
+                // Extract unique SHEET values from the response
+                if (data.features && Array.isArray(data.features)) {
+                    const sheets = new Set<string>();
+                    data.features.forEach((feature: any) => {
+                        const sheet = feature.attributes?.SHEET;
+                        if (sheet !== undefined && sheet !== null && sheet !== "") {
+                            sheets.add(String(sheet));
+                        }
+                    });
+
+                    // Convert to array and sort
+                    const sheetArray = Array.from(sheets).sort((a, b) => {
+                        // Try numeric sort first, fallback to string sort
+                        const numA = Number(a);
+                        const numB = Number(b);
+                        if (!isNaN(numA) && !isNaN(numB)) {
+                            return numA - numB;
+                        }
+                        return a.localeCompare(b);
+                    });
+
+                    console.log('Extracted sheets:', sheetArray);
+                    setFylloOptions(sheetArray);
+                } else {
+                    console.log('No features found in Sheet API response');
+                    setFylloOptions([]);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching sheet data:', error);
+                setFylloOptions([]);
+            });
+    }, [selectedRegionCodes, qrtrCode]);
+
+    // Fetch plan data when sheet is selected
+    useEffect(() => {
+        console.log('Plan useEffect triggered:', { selectedRegionCodes, qrtrCode, fyllo });
+
+        if (!selectedRegionCodes || qrtrCode === null || qrtrCode === undefined || !fyllo) {
+            console.log('Plan useEffect: Missing required data, clearing plan options');
+            setSxedioOptions([]);
+            setSxedio("");
+            return;
+        }
+
+        const { distCode, vilCode } = selectedRegionCodes;
+        const apiUrl = `https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/0/query?f=json&outFields=PLAN_NBR,PLAN_NBR,DIST_CODE,VIL_CODE,QRTR_CODE,SHEET,SRC_SL_CODE&returnDistinctValues=true&returnGeometry=false&where=DIST_CODE%3D${distCode}+and+VIL_CODE%3D${vilCode}+and+QRTR_CODE%3D${qrtrCode}+and+SHEET%3D${fyllo}`;
+
+        console.log('Making Plan API call:', apiUrl);
+        console.log('Using values:', { distCode, vilCode, qrtrCode, sheet: fyllo });
+
+        fetch(apiUrl)
+            .then(response => {
+                console.log('Plan API Response status:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Plan API Response:', data);
+                console.log('Plan API Response features count:', data.features?.length || 0);
+
+                // Extract unique PLAN_NBR values from the response
+                if (data.features && Array.isArray(data.features)) {
+                    const plans = new Set<string>();
+                    data.features.forEach((feature: any) => {
+                        const planNbr = feature.attributes?.PLAN_NBR;
+                        if (planNbr !== undefined && planNbr !== null && planNbr !== "") {
+                            plans.add(String(planNbr));
+                        }
+                    });
+
+                    // Convert to array and sort
+                    const planArray = Array.from(plans).sort((a, b) => {
+                        // Try to extract numeric parts for sorting
+                        const numA = parseInt(a.match(/\d+/)?.[0] || '0');
+                        const numB = parseInt(b.match(/\d+/)?.[0] || '0');
+                        if (numA !== numB) {
+                            return numA - numB;
+                        }
+                        // If numeric parts are equal, sort alphabetically
+                        return a.localeCompare(b);
+                    });
+
+                    console.log('Extracted plans:', planArray);
+                    setSxedioOptions(planArray);
+                } else {
+                    console.log('No features found in Plan API response');
+                    setSxedioOptions([]);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching plan data:', error);
+                setSxedioOptions([]);
+            });
+    }, [selectedRegionCodes, qrtrCode, fyllo]);
+
+    // Set section to "0" and disable when plan is selected
+    useEffect(() => {
+        if (sxedio) {
+            setTmima("0");
+            // Ensure "0" is in the options so it can be displayed
+            setTmimaOptions(["0"]);
+        } else {
+            setTmima("");
+            setTmimaOptions([]);
+        }
+    }, [sxedio]);
+
+    // Update kmlData when form fields change
+    useEffect(() => {
+        const newKmlData = buildKmlDataFromForm();
+        const hasData = Object.values(newKmlData).some(v => v !== "");
+        if (hasData) {
+            setKmlData(newKmlData);
+            injectKmlIntoVariables(newKmlData);
+        }
+
+    }, [eparchia, dimos, enoria, fyllo, sxedio, tmima, arithmosTemaxiou, selectedTemplate]);
+
     const resolveUploadsUrl = (u?: string): string | undefined => {
         if (!u) return undefined;
         if (/^https?:\/\//i.test(u) || u.startsWith('data:')) return u;
         const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
         if (u.startsWith('/')) return base + u;
         return base + '/' + u;
-    };
-
-    async function handleKmlFile(file: File) {
-        try {
-            const text = await file.text();
-            const parser = new DOMParser();
-            const xml = parser.parseFromString(text, "application/xml");
-            const getText = (el: Element | null | undefined): string => (el?.textContent || "").trim();
-            const qAll = (sel: string): Element[] => Array.from(xml.querySelectorAll(sel));
-            const q = (sel: string): Element | null => xml.querySelector(sel);
-            const replaceMuWithM = (val: string) => (val || "").replace(/μ/g, 'm');
-            const formatPlotNumber = (val: string) => {
-                const s = (val || '').trim();
-                const idx = s.lastIndexOf('-');
-                if (idx >= 0) return s.slice(idx + 1).trim();
-                return s;
-            };
-            const formatZone = (val: string) => {
-                const s = (val || '').trim();
-                return s.replace(/\s*\([^)]*\)\s*$/, '');
-            };
-            const stripSquareMeters = (val: string) => {
-                const s = replaceMuWithM(val || '').trim();
-                return s.replace(/\s*m2$/i, '').replace(/\s*m²$/i, '');
-            };
-            const extractBold = (html: string, label: string): string => {
-                const regex = new RegExp(label + ": <b>(.*?)<\\/b>", "i");
-                const match = html.match(regex);
-                return match ? (match[1] || '').trim() : '';
-            };
-            const extractByLabel = (html: string, label: string): string => extractBold(html, label);
-            const getDescHtml = (): string => getText(q("Document > Folder > Placemark > description")) || getText(q("Document > Placemark > description"));
-            const extractCoordinatesDom = (): string => {
-                // Try LookAt under Document > Placemark
-                const lookAtDoc = q("Document > Placemark > LookAt");
-                const lookAtFolder = q("Document > Folder > Placemark > LookAt");
-                const pickLookAt = (node: Element | null) => {
-                    if (!node) return "";
-                    const lat = getText(node.querySelector("latitude"));
-                    const lng = getText(node.querySelector("longitude"));
-                    if (lat && lng) return `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
-                    return "";
-                };
-                const look1 = pickLookAt(lookAtDoc);
-                if (look1) return look1;
-                const look2 = pickLookAt(lookAtFolder);
-                if (look2) return look2;
-                // Fallback: polygon centroid
-                const coordsEl = q("Document > Folder > Placemark > Polygon > outerBoundaryIs > LinearRing > coordinates") || q("Polygon > outerBoundaryIs > LinearRing > coordinates");
-                const coordsStr = getText(coordsEl);
-                if (!coordsStr) return "";
-                const pairs = coordsStr.trim().split(/\s+/).map((c) => {
-                    const [lng, lat] = c.split(",").slice(0, 2).map(Number) as [number, number];
-                    return [lng, lat] as [number, number];
-                });
-                if (!pairs.length) return "";
-                const count = pairs.length;
-                const sum = pairs.reduce((acc, curr) => [acc[0] + curr[0], acc[1] + curr[1]] as [number, number], [0, 0] as [number, number]);
-                const centerLng = sum[0] / count;
-                const centerLat = sum[1] / count;
-                return `${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}`;
-            };
-
-            const desc = getDescHtml();
-            const sheetPlanRaw = replaceMuWithM(extractByLabel(desc, "Αρ. Φ/Σχ"));
-            const [sheetPart, planPart] = (sheetPlanRaw || "").split("/").map((s) => (s || "").trim());
-            const out: Record<string, string> = {
-                municipality: replaceMuWithM(extractByLabel(desc, "Δήμος")),
-                region: replaceMuWithM(extractByLabel(desc, "Περιοχή")),
-                part: replaceMuWithM(extractByLabel(desc, "Τμήμα")),
-                plot_number: formatPlotNumber(getText(q("Document > name")) || getText(q("name"))),
-                plot_area: stripSquareMeters(extractByLabel(desc, "Εμβαδό")),
-                coordinates: extractCoordinatesDom(),
-                sheet_plan: sheetPlanRaw,
-                sheet: sheetPart || "",
-                plan: planPart || "",
-                registration_number: replaceMuWithM(extractByLabel(desc, "Αριθμός εγγραφης")),
-                property_type: replaceMuWithM(extractByLabel(desc, "Ειδος Ακινήτου")),
-                zone: formatZone(replaceMuWithM(extractByLabel(desc, "Ζώνη"))),
-                zone_description: replaceMuWithM(extractByLabel(desc, "Ζωνη Περιγραφή")),
-                building_coefficient: replaceMuWithM(extractByLabel(desc, "Δόμηση")),
-                coverage: replaceMuWithM(extractByLabel(desc, "Κάλυψη")),
-                floors: replaceMuWithM(extractByLabel(desc, "Ορόφοι")).replace(/,\s*$/, ""),
-                height: replaceMuWithM(extractByLabel(desc, "Υψος")),
-                value_2018: replaceMuWithM(extractByLabel(desc, "Αξία 2018")),
-                value_2021: replaceMuWithM(extractByLabel(desc, "Αξία 2021")),
-            };
-            setKmlData(out);
-            injectKmlIntoVariables(out);
-            return out;
-        } catch (e) {
-            toast.error('Invalid KML');
-            return null;
-        }
-    }
-
-    const handleKmlDrop = async (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        if (!e.dataTransfer?.files?.[0]) return;
-        const file = e.dataTransfer.files[0];
-        if (!file.name.toLowerCase().endsWith('.kml')) return toast.error('Please drop a .kml file');
-        await handleKmlFile(file);
-    };
-
-    const handleKmlSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        await handleKmlFile(file);
     };
 
     async function handlePdfFile(file: File) {
@@ -311,12 +551,35 @@ export default function FillTemplatePage() {
                     } catch (_) { }
                     setReportTitle((report as any).title || (report as any).name || (tpl as any).name || "");
                     setReportStatus((report as any).status || "Draft");
-                    // Prefill KML data if present so we don't prompt re-upload
+                    // Prefill KML data if present
                     if ((report as any).kmlData && typeof (report as any).kmlData === 'object') {
-                        setKmlData((report as any).kmlData || {});
-                        injectKmlIntoVariables((report as any).kmlData || {});
+                        const loadedKmlData = (report as any).kmlData || {};
+                        setKmlData(loadedKmlData);
+                        // Populate form fields from loaded KML data
+                        setEparchia(loadedKmlData.eparchia || "");
+                        setDimos(loadedKmlData.dimos || "");
+                        if (loadedKmlData.dimos_vil_code && loadedKmlData.dimos_dist_code) {
+                            setSelectedRegionCodes({
+                                vilCode: loadedKmlData.dimos_vil_code,
+                                distCode: loadedKmlData.dimos_dist_code
+                            });
+                        }
+                        setEnoria(loadedKmlData.enoria || "");
+                        setFyllo(loadedKmlData.fyllo || "");
+                        setSxedio(loadedKmlData.sxedio || "");
+                        setTmima(loadedKmlData.tmima || "");
+                        setArithmosTemaxiou(loadedKmlData.arithmos_temaxiou || "");
+                        injectKmlIntoVariables(loadedKmlData);
                     } else {
                         setKmlData({});
+                        // Reset form fields
+                        setEparchia("");
+                        setDimos("");
+                        setEnoria("");
+                        setFyllo("");
+                        setSxedio("");
+                        setTmima("");
+                        setArithmosTemaxiou("");
                     }
                     setStep(2);
                     return;
@@ -1009,41 +1272,361 @@ export default function FillTemplatePage() {
                 </Card>
             )}
 
-            {/* Step 2: KML Upload (only if template requires KML) */}
+            {/* Step 2: KML Data Entry (only if template requires KML) */}
             {selectedTemplate && selectedTemplate.requiresKml && step === 2 && (
                 <Card>
                     <CardHeader>
-                        <CardTitle>Upload KML</CardTitle>
+                        <CardTitle>Enter KML Data</CardTitle>
                         <CardDescription>
-                            {hasKmlData
-                                ? 'KML data found for this report. Review below or replace it by uploading another file.'
-                                : 'Drag and drop a .kml file or click to select. Extracted details will be saved to this report.'}
+                            Fill in the cadastral information. Values will be fetched from the API.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent>
-                        <input ref={kmlInputRef} type="file" accept=".kml" className="hidden" onChange={handleKmlSelect} />
-                        {!hasKmlData && (
-                            <div
-                                onDragOver={(e) => { e.preventDefault(); }}
-                                onDrop={handleKmlDrop}
-                                className="border-2 border-dashed rounded-md p-8 text-center cursor-pointer"
-                                onClick={() => kmlInputRef.current?.click()}
-                            >
-                                <p className="text-sm text-muted-foreground">Drop KML here or click to select</p>
+                    <CardContent className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Left Column: All form fields */}
+                            <div className="space-y-4">
+                                <div className="space-y-3">
+                                    <Label htmlFor="eparchia">Επαρχία (Province)</Label>
+                                    <Popover open={eparchiaOpen} onOpenChange={setEparchiaOpen}>
+                                        <PopoverTrigger asChild>
+                                            <div className="relative">
+                                                <Button
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    aria-expanded={eparchiaOpen}
+                                                    className="w-full justify-between bg-gray-100"
+                                                >
+                                                    {eparchia
+                                                        ? eparchiaOptions.find((option) => option.code === eparchia)?.name
+                                                        : "Επαρχία..."}
+                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                </Button>
+                                                {eparchia && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent z-10"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            clearEparchia();
+                                                        }}
+                                                    >
+                                                        <X className="h-4 w-4 text-muted-foreground" />
+                                                    </Button>
+                                                )}
                             </div>
-                        )}
-                        {hasKmlData && (
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {Object.entries(kmlData).map(([k, v]) => (
-                                    <div key={k} className="text-sm"><span className="text-muted-foreground">{k}:</span> <span className="font-medium break-words">{String(v || '')}</span></div>
-                                ))}
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                            <Command>
+                                                <CommandInput placeholder="Αναζήτηση επαρχίας..." />
+                                                <CommandList>
+                                                    <CommandEmpty>Δεν βρέθηκε επαρχία.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {eparchiaOptions.map((option) => (
+                                                            <CommandItem
+                                                                key={option.code}
+                                                                value={option.name}
+                                                                onSelect={() => {
+                                                                    setEparchia(option.code === eparchia ? "" : option.code);
+                                                                    setEparchiaOpen(false);
+                                                                }}
+                                                            >
+                                                                <Check
+                                                                    className={`mr-2 h-4 w-4 ${
+                                                                        eparchia === option.code ? "opacity-100" : "opacity-0"
+                                                                    }`}
+                                                                />
+                                                                {option.name}
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <Label htmlFor="dimos">Περιοχή (Region)</Label>
+                                    <Popover open={dimosOpen} onOpenChange={setDimosOpen}>
+                                        <PopoverTrigger asChild>
+                                            <div className="relative">
+                                                <Button
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    aria-expanded={dimosOpen}
+                                                    className="w-full justify-between bg-gray-100"
+                                                    disabled={!eparchia || dimosOptions.length === 0}
+                                                >
+                                                    {dimos
+                                                        ? dimosOptions.find((option) => option.name === dimos)?.name
+                                                        : "Περιοχή..."}
+                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                </Button>
+                                                {dimos && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent z-10"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            clearDimos();
+                                                        }}
+                                                    >
+                                                        <X className="h-4 w-4 text-muted-foreground" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                            <Command>
+                                                <CommandInput placeholder="Αναζήτηση περιοχής..." />
+                                                <CommandList>
+                                                    <CommandEmpty>Δεν βρέθηκε περιοχή.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {dimosOptions.map((option) => (
+                                                            <CommandItem
+                                                                key={`${option.vilCode}-${option.distCode}`}
+                                                                value={option.name}
+                                                                onSelect={() => {
+                                                                    const newDimos = option.name === dimos ? "" : option.name;
+                                                                    const newCodes = newDimos ? {
+                                                                        vilCode: option.vilCode,
+                                                                        distCode: option.distCode
+                                                                    } : null;
+                                                                    console.log('Region selected:', { newDimos, newCodes });
+                                                                    setDimos(newDimos);
+                                                                    setSelectedRegionCodes(newCodes);
+                                                                    setDimosOpen(false);
+                                                                }}
+                                                            >
+                                                                <Check
+                                                                    className={`mr-2 h-4 w-4 ${
+                                                                        dimos === option.name ? "opacity-100" : "opacity-0"
+                                                                    }`}
+                                                                />
+                                                                {option.name}
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
                             </div>
-                        )}
-                        {hasKmlData && (
-                            <div className="mt-6">
-                                <Button variant="outline" onClick={() => kmlInputRef.current?.click()}>Upload another KML</Button>
+
+                                <div className="space-y-3">
+                                    <Label htmlFor="enoria">Ενορία (Parish)</Label>
+                                    <Popover open={false} onOpenChange={() => {}}>
+                                        <PopoverTrigger asChild>
+                                            <div className="relative">
+                                                <Button
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    aria-expanded={false}
+                                                    className="w-full justify-between bg-gray-100"
+                                                    disabled={true}
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                    }}
+                                                >
+                                                    {enoria || "Ενορία..."}
+                                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                                </Button>
+                                            </div>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                                            <Command>
+                                                <CommandInput placeholder="Αναζήτηση ενορίας..." />
+                                                <CommandList>
+                                                    <CommandEmpty>Δεν βρέθηκε ενορία.</CommandEmpty>
+                                                    <CommandGroup>
+                                                        {enoriaOptions.map((option) => (
+                                                            <CommandItem
+                                                                key={option}
+                                                                value={option}
+                                                                onSelect={() => {
+                                                                    setEnoria(option === enoria ? "" : option);
+                                                                    setEnoriaOpen(false);
+                                                                }}
+                                                            >
+                                                                <Check
+                                                                    className={`mr-2 h-4 w-4 ${
+                                                                        enoria === option ? "opacity-100" : "opacity-0"
+                                                                    }`}
+                                                                />
+                                                                {option}
+                                                            </CommandItem>
+                                                        ))}
+                                                    </CommandGroup>
+                                                </CommandList>
+                                            </Command>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+
+                                {/* Sheet, Plan, and Section in one row */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+                                    <div className="space-y-3 w-full">
+                                        <Label htmlFor="fyllo">Φύλλο (Sheet)</Label>
+                                        <div className="relative w-full">
+                                            <Select
+                                                value={fyllo}
+                                                onValueChange={setFyllo}
+                                                disabled={!dimos}
+                                            >
+                                                <SelectTrigger id="fyllo" className="bg-gray-100 w-full">
+                                                    <SelectValue placeholder="Φύλλο..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {fylloOptions.map((option) => (
+                                                        <SelectItem key={option} value={option}>
+                                                            {option}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            {fyllo && (
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        clearFyllo();
+                                                    }}
+                                                >
+                                                    <X className="h-4 w-4 text-muted-foreground" />
+                                                </Button>
+                                            )}
                             </div>
-                        )}
+                                    </div>
+
+                                    <div className="space-y-3 w-full">
+                                        <Label htmlFor="sxedio">Σχέδιο (Plan)</Label>
+                                        <div className="relative w-full">
+                                            <Select
+                                                value={sxedio}
+                                                onValueChange={setSxedio}
+                                                disabled={!fyllo}
+                                            >
+                                                <SelectTrigger id="sxedio" className="bg-gray-100 w-full">
+                                                    <SelectValue placeholder="Σχέδιο..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {sxedioOptions.map((option) => (
+                                                        <SelectItem key={option} value={option}>
+                                                            {option}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            {sxedio && (
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        clearSxedio();
+                                                    }}
+                                                >
+                                                    <X className="h-4 w-4 text-muted-foreground" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3 w-full">
+                                        <Label htmlFor="tmima">Τμήμα (Section)</Label>
+                                        <div className="relative w-full">
+                                            <Select
+                                                value={tmima}
+                                                onValueChange={() => {}}
+                                                disabled={true}
+                                            >
+                                                <SelectTrigger id="tmima" className="bg-gray-100 w-full">
+                                                    <SelectValue placeholder="Τμήμα..." />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {tmimaOptions.map((option) => (
+                                                        <SelectItem key={option} value={option}>
+                                                            {option}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <Label htmlFor="arithmos-temaxiou">Αριθμός Τεμαχίου (Parcel Number)</Label>
+                                    <div className="relative">
+                                        <Input
+                                            id="arithmos-temaxiou"
+                                            type="text"
+                                            placeholder="Αριθμός Τεμαχίου..."
+                                            value={arithmosTemaxiou}
+                                            onChange={(e) => setArithmosTemaxiou(e.target.value)}
+                                            className="bg-gray-100 pr-8"
+                                        />
+                                        {arithmosTemaxiou && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent"
+                                                onClick={() => setArithmosTemaxiou("")}
+                                            >
+                                                <X className="h-4 w-4 text-muted-foreground" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Find Button */}
+                                <div className="flex justify-start pt-2">
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span>
+                                                    <Button
+                                                        onClick={async () => {
+                                                            // TODO: Connect to API endpoint
+                                                            const formData = buildKmlDataFromForm();
+                                                            console.log('Form data to submit:', formData);
+                                                            toast.info('Form submission - API integration pending');
+                                                            // Placeholder for API call:
+                                                            // const response = await fetch('/api/kml-data', { method: 'POST', body: JSON.stringify(formData) });
+                                                        }}
+                                                        disabled={!eparchia || !dimos || !fyllo || !sxedio || !arithmosTemaxiou}
+                                                    >
+                                                        <Search className="mr-2 h-4 w-4" />
+                                                        Find
+                                                    </Button>
+                                                </span>
+                                            </TooltipTrigger>
+                                            {(!eparchia || !dimos || !fyllo || !sxedio || !arithmosTemaxiou) && (
+                                                <TooltipContent>
+                                                    <p>Please fill in all required fields</p>
+                                                </TooltipContent>
+                                            )}
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </div>
+
+                            {/* Right Column: Reserved for API information display */}
+                            <div className="space-y-4">
+                                {/* API information will be displayed here */}
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
             )}
