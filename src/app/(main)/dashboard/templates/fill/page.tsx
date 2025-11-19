@@ -468,19 +468,18 @@ export default function FillTemplatePage() {
         setIsExtractingPdf(true);
         try {
             const result = await templateApi.extractPdf(file);
-            const extractedValue = result.extractedValue;
-            const label = "ΑΡ. ΕΚΤΙΜΗΣΗΣ";
+            const extractedValues = result.extractedValues;
 
-            // Update extracted values state
+            // Update extracted values state with all extracted values
             setPdfExtractedValues(prev => ({
                 ...prev,
-                [label]: extractedValue
+                ...extractedValues
             }));
 
-            // Update report values with the extracted value under "ΑΡ. ΕΚΤΙΜΗΣΗΣ"
+            // Update report values with all extracted values
             setVariableValues(prev => ({
                 ...prev,
-                [label]: extractedValue
+                ...extractedValues
             }));
 
             // Save to report if it exists
@@ -489,17 +488,20 @@ export default function FillTemplatePage() {
                     await reportApi.update(reportId, {
                         values: {
                             ...variableValues,
-                            [label]: extractedValue
+                            ...extractedValues
                         }
                     });
                 } catch (err) {
-                    console.error('Failed to save PDF extracted value to report:', err);
+                    console.error('Failed to save PDF extracted values to report:', err);
                 }
             }
 
-            toast.success(`Extracted ${label}: ${extractedValue}`);
+            // Show success message with all extracted values
+            const extractedCount = Object.keys(extractedValues).length;
+            const extractedLabels = Object.keys(extractedValues).join(', ');
+            toast.success(`Extracted ${extractedCount} value(s): ${extractedLabels}`);
         } catch (error: any) {
-            toast.error(error.message || 'Failed to extract value from PDF');
+            toast.error(error.message || 'Failed to extract values from PDF');
         } finally {
             setIsExtractingPdf(false);
         }
@@ -537,9 +539,17 @@ export default function FillTemplatePage() {
                     setVariableValues(reportValues);
                     // Load PDF extracted values if present
                     const extractedValues: Record<string, string> = {};
-                    if (reportValues["ΑΡ. ΕΚΤΙΜΗΣΗΣ"]) {
-                        extractedValues["ΑΡ. ΕΚΤΙΜΗΣΗΣ"] = reportValues["ΑΡ. ΕΚΤΙΜΗΣΗΣ"];
-                    }
+                    const pdfExtractionKeys = [
+                        "ΑΡ. ΕΚΤΙΜΗΣΗΣ",
+                        "ΟΝΟΜΑ ΠΕΛΑΤΗ",
+                        "Υπάλληλος Τράπεζας",
+                        "ΚΑΤΑΣΤΗΜΑ / ΥΠΗΡΕΣΙΑ ΤΡΑΠΕΖΑΣ"
+                    ];
+                    pdfExtractionKeys.forEach(key => {
+                        if (reportValues[key]) {
+                            extractedValues[key] = reportValues[key];
+                        }
+                    });
                     setPdfExtractedValues(extractedValues);
                     // Restore checklist progress from saved report
                     try {

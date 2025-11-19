@@ -155,7 +155,7 @@ export const templateApi = {
     return res.json() as Promise<{ filename: string; url: string }>;
   },
 
-  // Extract value from PDF (for "Αρ. Εκτίμησης")
+  // Extract values from PDF
   extractPdf: async (file: File) => {
     const url = `${API_BASE_URL}/uploads/extract-pdf`;
     const form = new FormData();
@@ -177,7 +177,7 @@ export const templateApi = {
       const data = await res.json().catch(() => ({}));
       throw new ApiError(res.status, data.message ?? 'PDF extraction failed');
     }
-    return res.json() as Promise<{ extractedValue: string; searchText: string }>;
+    return res.json() as Promise<{ extractedValues: Record<string, string> }>;
   },
 
   // Generate report
