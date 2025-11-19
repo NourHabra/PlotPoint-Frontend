@@ -1597,15 +1597,26 @@ export default function FillTemplatePage() {
                                             <TooltipTrigger asChild>
                                                 <span>
                                                     <Button
-                                                        onClick={async () => {
-                                                            // TODO: Connect to API endpoint
-                                                            const formData = buildKmlDataFromForm();
-                                                            console.log('Form data to submit:', formData);
-                                                            toast.info('Form submission - API integration pending');
-                                                            // Placeholder for API call:
-                                                            // const response = await fetch('/api/kml-data', { method: 'POST', body: JSON.stringify(formData) });
+                                                        onClick={() => {
+                                                            // Validate required fields
+                                                            if (!selectedRegionCodes?.distCode || !selectedRegionCodes?.vilCode || !fyllo || !sxedio || !arithmosTemaxiou) {
+                                                                toast.error('Please fill in all required fields');
+                                                                return;
+                                                            }
+
+                                                            // Build request parameters
+                                                            const params = {
+                                                                distCode: selectedRegionCodes.distCode,
+                                                                vilCode: selectedRegionCodes.vilCode,
+                                                                sheet: fyllo,
+                                                                planNbr: sxedio,
+                                                                parcelNbr: arithmosTemaxiou,
+                                                            };
+
+                                                            console.log('Parcel query params:', params);
+                                                            toast.success(`Params: ${JSON.stringify(params)}`);
                                                         }}
-                                                        disabled={!eparchia || !dimos || !fyllo || !sxedio || !arithmosTemaxiou}
+                                                        disabled={!eparchia || !dimos || !fyllo || !sxedio || !arithmosTemaxiou || !selectedRegionCodes?.distCode || !selectedRegionCodes?.vilCode}
                                                     >
                                                         <Search className="mr-2 h-4 w-4" />
                                                         Find

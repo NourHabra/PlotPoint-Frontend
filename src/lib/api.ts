@@ -370,6 +370,20 @@ export const userTemplateApi = {
     apiRequest<UserTemplateDto>(`/user-templates/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
 };
 
+// Parcel Query API
+export const parcelQueryApi = {
+  query: (params: { distCode: number | string; vilCode: number | string; sheet: string; planNbr: string; parcelNbr: string }) => {
+    const queryParams = new URLSearchParams({
+      distCode: String(params.distCode),
+      vilCode: String(params.vilCode),
+      sheet: params.sheet,
+      planNbr: params.planNbr,
+      parcelNbr: params.parcelNbr,
+    });
+    return apiRequest<any>(`/parcel-query?${queryParams.toString()}`);
+  },
+};
+
 export interface UserDto {
   id: string;
   name: string;
