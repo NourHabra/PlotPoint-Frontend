@@ -575,6 +575,33 @@ export default function FillTemplatePage() {
 
     async function handlePdfFile(file: File) {
         setIsExtractingPdf(true);
+
+        // Clear old PDF extracted values before processing new file
+        const pdfExtractionKeys = [
+            "ΑΡ. ΕΚΤΙΜΗΣΗΣ",
+            "ΟΝΟΜΑ ΠΕΛΑΤΗ",
+            "Υπάλληλος Τράπεζας",
+            "ΚΑΤΑΣΤΗΜΑ / ΥΠΗΡΕΣΙΑ ΤΡΑΠΕΖΑΣ"
+        ];
+
+        // Clear from pdfExtractedValues state
+        setPdfExtractedValues(prev => {
+            const cleared = { ...prev };
+            pdfExtractionKeys.forEach(key => {
+                delete cleared[key];
+            });
+            return cleared;
+        });
+
+        // Clear from variableValues state
+        setVariableValues(prev => {
+            const cleared = { ...prev };
+            pdfExtractionKeys.forEach(key => {
+                delete cleared[key];
+            });
+            return cleared;
+        });
+
         try {
             const result = await templateApi.extractPdf(file);
             const extractedValues = result.extractedValues;
@@ -627,6 +654,10 @@ export default function FillTemplatePage() {
     const handlePdfSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        // Reset input so the same file can be selected again
+        if (e.target) {
+            e.target.value = '';
+        }
         await handlePdfFile(file);
     };
 
