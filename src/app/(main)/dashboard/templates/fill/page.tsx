@@ -1668,34 +1668,6 @@ export default function FillTemplatePage() {
                                                                     setSbpiIdNo(sbpiId);
                                                                     console.log('SBPI_ID_NO:', sbpiId);
                                                                     toast.success(`Query completed successfully. SBPI ID: ${sbpiId}`);
-
-                                                                    // Make GET request to GeneralParcelIdentify with the SBPI ID via backend proxy
-                                                                    try {
-                                                                        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:5000/api';
-                                                                        const parcelInfoUrl = `${API_BASE_URL}/parcel-info?subPropertyId=${sbpiId}`;
-                                                                        console.log('Parcel Info Request URL:', parcelInfoUrl);
-
-                                                                        const parcelInfoResponse = await fetch(parcelInfoUrl);
-
-                                                                        if (!parcelInfoResponse.ok) {
-                                                                            const errorData = await parcelInfoResponse.json().catch(() => ({}));
-                                                                            throw new Error(errorData.message || `HTTP error! status: ${parcelInfoResponse.status}`);
-                                                                        }
-
-                                                                        const parcelInfoData = await parcelInfoResponse.json();
-                                                                        console.log('Parcel Info Response Status:', parcelInfoResponse.status);
-                                                                        console.log('Parcel Info Response Data:', parcelInfoData);
-                                                                        console.log('Parcel Info Response (JSON):', JSON.stringify(parcelInfoData, null, 2));
-
-                                                                        // Show response body in toast
-                                                                        const responseBody = JSON.stringify(parcelInfoData, null, 2);
-                                                                        toast.success(`Parcel Info Response Body:\n${responseBody}`, {
-                                                                            duration: 10000, // Show for 10 seconds to allow reading
-                                                                        });
-                                                                    } catch (parcelError) {
-                                                                        console.error('Error fetching parcel info:', parcelError);
-                                                                        toast.error(`Failed to fetch parcel info: ${parcelError instanceof Error ? parcelError.message : 'Unknown error'}`);
-                                                                    }
                                                                 } else {
                                                                     console.warn('SBPI_ID_NO not found in response');
                                                                     toast.success('Query completed successfully (No SBPI ID found)');
