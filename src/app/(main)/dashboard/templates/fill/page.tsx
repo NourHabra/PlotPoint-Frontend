@@ -106,6 +106,7 @@ export default function FillTemplatePage() {
     // Store selected region codes
     const [selectedRegionCodes, setSelectedRegionCodes] = useState<{ vilCode: number; distCode: number } | null>(null);
     const [qrtrCode, setQrtrCode] = useState<number | null>(null);
+    const [sbpiIdNo, setSbpiIdNo] = useState<number | null>(null);
 
     // Province code to name mapping
     const eparchiaCodeToName: Record<string, string> = {
@@ -1315,7 +1316,7 @@ export default function FillTemplatePage() {
                                                         <X className="h-4 w-4 text-muted-foreground" />
                                                     </Button>
                                                 )}
-                            </div>
+                                            </div>
                                         </PopoverTrigger>
                                         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
                                             <Command>
@@ -1333,9 +1334,8 @@ export default function FillTemplatePage() {
                                                                 }}
                                                             >
                                                                 <Check
-                                                                    className={`mr-2 h-4 w-4 ${
-                                                                        eparchia === option.code ? "opacity-100" : "opacity-0"
-                                                                    }`}
+                                                                    className={`mr-2 h-4 w-4 ${eparchia === option.code ? "opacity-100" : "opacity-0"
+                                                                        }`}
                                                                 />
                                                                 {option.name}
                                                             </CommandItem>
@@ -1403,9 +1403,8 @@ export default function FillTemplatePage() {
                                                                 }}
                                                             >
                                                                 <Check
-                                                                    className={`mr-2 h-4 w-4 ${
-                                                                        dimos === option.name ? "opacity-100" : "opacity-0"
-                                                                    }`}
+                                                                    className={`mr-2 h-4 w-4 ${dimos === option.name ? "opacity-100" : "opacity-0"
+                                                                        }`}
                                                                 />
                                                                 {option.name}
                                                             </CommandItem>
@@ -1415,11 +1414,11 @@ export default function FillTemplatePage() {
                                             </Command>
                                         </PopoverContent>
                                     </Popover>
-                            </div>
+                                </div>
 
                                 <div className="space-y-3">
                                     <Label htmlFor="enoria">Ενορία (Parish)</Label>
-                                    <Popover open={false} onOpenChange={() => {}}>
+                                    <Popover open={false} onOpenChange={() => { }}>
                                         <PopoverTrigger asChild>
                                             <div className="relative">
                                                 <Button
@@ -1454,9 +1453,8 @@ export default function FillTemplatePage() {
                                                                 }}
                                                             >
                                                                 <Check
-                                                                    className={`mr-2 h-4 w-4 ${
-                                                                        enoria === option ? "opacity-100" : "opacity-0"
-                                                                    }`}
+                                                                    className={`mr-2 h-4 w-4 ${enoria === option ? "opacity-100" : "opacity-0"
+                                                                        }`}
                                                                 />
                                                                 {option}
                                                             </CommandItem>
@@ -1503,7 +1501,7 @@ export default function FillTemplatePage() {
                                                     <X className="h-4 w-4 text-muted-foreground" />
                                                 </Button>
                                             )}
-                            </div>
+                                        </div>
                                     </div>
 
                                     <div className="space-y-3 w-full">
@@ -1547,7 +1545,7 @@ export default function FillTemplatePage() {
                                         <div className="relative w-full">
                                             <Select
                                                 value={tmima}
-                                                onValueChange={() => {}}
+                                                onValueChange={() => { }}
                                                 disabled={true}
                                             >
                                                 <SelectTrigger id="tmima" className="bg-gray-100 w-full">
@@ -1597,24 +1595,90 @@ export default function FillTemplatePage() {
                                             <TooltipTrigger asChild>
                                                 <span>
                                                     <Button
-                                                        onClick={() => {
+                                                        onClick={async () => {
                                                             // Validate required fields
                                                             if (!selectedRegionCodes?.distCode || !selectedRegionCodes?.vilCode || !fyllo || !sxedio || !arithmosTemaxiou) {
                                                                 toast.error('Please fill in all required fields');
                                                                 return;
                                                             }
 
-                                                            // Build request parameters
-                                                            const params = {
-                                                                distCode: selectedRegionCodes.distCode,
-                                                                vilCode: selectedRegionCodes.vilCode,
-                                                                sheet: fyllo,
-                                                                planNbr: sxedio,
-                                                                parcelNbr: arithmosTemaxiou,
-                                                            };
+                                                            try {
+                                                                // Build the where clause
+                                                                const distCode = selectedRegionCodes.distCode;
+                                                                const vilCode = selectedRegionCodes.vilCode;
+                                                                const qrtrCodeValue = qrtrCode !== null && qrtrCode !== undefined ? qrtrCode : 0;
+                                                                const blckCode = 0; // Default to 0 as per example
+                                                                const sheet = fyllo;
+                                                                const planNbr = sxedio; // This will be quoted in the where clause
+                                                                const parcelNbr = arithmosTemaxiou;
 
-                                                            console.log('Parcel query params:', params);
-                                                            toast.success(`Params: ${JSON.stringify(params)}`);
+                                                                // Build where clause: DIST_CODE=1+and+VIL_CODE=411+and+QRTR_CODE=0+and+BLCK_CODE=0+and+SHEET=28+and+PLAN_NBR='61'+and+PARCEL_NBR=5
+                                                                const whereClause = `DIST_CODE=${distCode}+and+VIL_CODE=${vilCode}+and+QRTR_CODE=${qrtrCodeValue}+and+BLCK_CODE=${blckCode}+and+SHEET=${sheet}+and+PLAN_NBR='${planNbr}'+and+PARCEL_NBR=${parcelNbr}`;
+
+                                                                // Build the outSR parameter (URL encoded JSON)
+                                                                const outSR = {
+                                                                    wkid: 102100,
+                                                                    latestWkid: 3857,
+                                                                    xyTolerance: 0.001,
+                                                                    zTolerance: 0.001,
+                                                                    mTolerance: 0.001,
+                                                                    falseX: -20037700,
+                                                                    falseY: -30241100,
+                                                                    xyUnits: 10000,
+                                                                    falseZ: -100000,
+                                                                    zUnits: 10000,
+                                                                    falseM: -100000,
+                                                                    mUnits: 10000
+                                                                };
+
+                                                                // Build the full URL - manually construct to preserve + signs in where clause
+                                                                const baseUrl = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/0/query';
+                                                                const outSREncoded = encodeURIComponent(JSON.stringify(outSR));
+                                                                const whereEncoded = encodeURIComponent(whereClause).replace(/%2B/g, '+'); // Replace %2B with + to match original format
+                                                                const fullUrl = `${baseUrl}?f=json&outFields=*&outSR=${outSREncoded}&returnGeometry=true&where=${whereEncoded}`;
+
+                                                                // Log the request URL
+                                                                console.log('API Request URL:', fullUrl);
+                                                                console.log('Request Parameters:', {
+                                                                    distCode,
+                                                                    vilCode,
+                                                                    qrtrCodeValue,
+                                                                    blckCode,
+                                                                    sheet,
+                                                                    planNbr,
+                                                                    parcelNbr,
+                                                                    whereClause
+                                                                });
+
+                                                                // Make the API request
+                                                                const response = await fetch(fullUrl);
+
+                                                                if (!response.ok) {
+                                                                    throw new Error(`HTTP error! status: ${response.status}`);
+                                                                }
+
+                                                                const data = await response.json();
+                                                                console.log('API Response Status:', response.status);
+                                                                console.log('API Response Data:', data);
+                                                                console.log('API Response (JSON):', JSON.stringify(data, null, 2));
+
+                                                                // Extract SBPI_ID_NO from the response
+                                                                const sbpiId = data?.features?.[0]?.attributes?.SBPI_ID_NO;
+                                                                if (sbpiId !== undefined && sbpiId !== null) {
+                                                                    setSbpiIdNo(sbpiId);
+                                                                    console.log('SBPI_ID_NO:', sbpiId);
+                                                                    toast.success(`Query completed successfully. SBPI ID: ${sbpiId}`);
+                                                                } else {
+                                                                    console.warn('SBPI_ID_NO not found in response');
+                                                                    toast.success('Query completed successfully (No SBPI ID found)');
+                                                                }
+
+                                                                // You can handle the response data here
+                                                                // For example, display it in the right column or update state
+                                                            } catch (error) {
+                                                                console.error('Error making API request:', error);
+                                                                toast.error(`Failed to query: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                                                            }
                                                         }}
                                                         disabled={!eparchia || !dimos || !fyllo || !sxedio || !arithmosTemaxiou || !selectedRegionCodes?.distCode || !selectedRegionCodes?.vilCode}
                                                     >
