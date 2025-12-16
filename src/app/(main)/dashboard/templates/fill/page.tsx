@@ -1899,7 +1899,10 @@ export default function FillTemplatePage() {
                 )}
 
             {/* PDF Upload Section (appears after KML upload) */}
-            {selectedTemplate && selectedTemplate.requiresKml && step === 2 && (
+            {(() => {
+                const SHOW_PDF_EXTRACTION = true; // Set to false to disable PDF extraction
+                return SHOW_PDF_EXTRACTION && selectedTemplate && selectedTemplate.requiresKml && step === 2;
+            })() && (
                 <Card>
                     <CardHeader>
                         <CardTitle>Upload Instructions PDF</CardTitle>
@@ -1975,7 +1978,10 @@ export default function FillTemplatePage() {
             )}
 
             {/* PDF Upload Section for non-KML templates */}
-            {selectedTemplate && !selectedTemplate.requiresKml && step === 1 && (
+            {(() => {
+                const SHOW_PDF_EXTRACTION = true; // Set to false to disable PDF extraction
+                return SHOW_PDF_EXTRACTION && selectedTemplate && !selectedTemplate.requiresKml && step === 1;
+            })() && (
                 <Card>
                     <CardHeader>
                         <CardTitle>Upload Instructions PDF</CardTitle>
