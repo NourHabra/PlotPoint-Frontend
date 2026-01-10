@@ -1,5 +1,7 @@
 "use client";
 
+import React from "react";
+
 import { Loader2, ChevronsUpDown, Check, X, Search } from "lucide-react";
 import { toast } from "sonner";
 
@@ -59,6 +61,21 @@ interface ParcelSearchProps {
 
     // Parcel details
     parcelDetails: any;
+    reportId: string | null;
+
+    // Callbacks
+    onParcelFound?: (data: {
+        sbpiIdNo: number;
+        parcelDetails: any;
+        searchParams: {
+            distCode: number;
+            vilCode: number;
+            qrtrCode: number;
+            sheet: string;
+            planNbr: string;
+            parcelNbr: string;
+        };
+    }) => void;
 
     // Setters
     setEparchia: (value: string) => void;
@@ -83,6 +100,7 @@ interface ParcelSearchProps {
     clearFyllo: () => void;
     clearSxedio: () => void;
     clearTmima: () => void;
+    clearAllParcelData: () => void;
 }
 
 export function ParcelSearch(props: ParcelSearchProps) {
@@ -111,6 +129,8 @@ export function ParcelSearch(props: ParcelSearchProps) {
         selectedRegionCodes,
         qrtrCode,
         parcelDetails,
+        reportId,
+        onParcelFound,
         setEparchia,
         setDimos,
         setEnoria,
@@ -131,6 +151,7 @@ export function ParcelSearch(props: ParcelSearchProps) {
         clearFyllo,
         clearSxedio,
         clearTmima,
+        clearAllParcelData,
     } = props;
 
     const eparchiaOptions = Object.entries(eparchiaCodeToName).map(([code, name]) => ({
@@ -580,6 +601,15 @@ export function ParcelSearch(props: ParcelSearchProps) {
                                                             console.log('Has PrPropertyTypeNameEl?', data.parcelDetails.PrPropertyTypeNameEl);
                                                             setParcelDetails(data.parcelDetails);
                                                             toast.success('Parcel found successfully!');
+
+                                                            // Call callback to save parcel data to report
+                                                            if (onParcelFound && sbpiId && data.searchParams) {
+                                                                onParcelFound({
+                                                                    sbpiIdNo: sbpiId,
+                                                                    parcelDetails: data.parcelDetails,
+                                                                    searchParams: data.searchParams,
+                                                                });
+                                                            }
                                                         } else {
                                                             setParcelDetails(null);
                                                             console.warn('Parcel details not found in response');

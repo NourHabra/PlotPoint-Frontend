@@ -417,6 +417,32 @@ export default function FillTemplatePage() {
         setArithmosTemaxiou("");
     };
 
+    const clearAllParcelData = () => {
+        // Clear all form fields
+        setEparchia("");
+        setDimos("");
+        setEnoria("");
+        setFyllo("");
+        setSxedio("");
+        setTmima("");
+        setArithmosTemaxiou("");
+
+        // Clear selected codes
+        setSelectedRegionCodes(null);
+        setQrtrCode(null);
+        setSbpiIdNo(null);
+
+        // Clear parcel details
+        setParcelDetails(null);
+
+        // Clear dropdown options
+        setDimosOptions([]);
+        setEnoriaOptions([]);
+        setFylloOptions([]);
+        setSxedioOptions([]);
+        setTmimaOptions([]);
+    };
+
     // Fetch data when province is selected
     useEffect(() => {
         if (!eparchia) {
@@ -661,6 +687,25 @@ export default function FillTemplatePage() {
                         setSxedio("");
                         setTmima("");
                         setArithmosTemaxiou("");
+                    }
+
+                    // Load saved parcel data if present
+                    if ((report as any).sbpiIdNo && (report as any).parcelDetails) {
+                        setSbpiIdNo((report as any).sbpiIdNo);
+                        setParcelDetails((report as any).parcelDetails);
+                        console.log('Loaded saved parcel data:', {
+                            sbpiIdNo: (report as any).sbpiIdNo,
+                            fetchedAt: (report as any).parcelFetchedAt
+                        });
+                    }
+
+                    // Restore parcel search form fields if they were saved
+                    if ((report as any).parcelSearchParams) {
+                        const params = (report as any).parcelSearchParams;
+                        // Note: We're not restoring the form fields from parcelSearchParams
+                        // because they might already be set from kmlData above
+                        // The parcelSearchParams are mainly for re-querying if needed
+                        console.log('Parcel search params available:', params);
                     }
                     setStep(2);
                     return;
@@ -1393,6 +1438,21 @@ export default function FillTemplatePage() {
                         selectedRegionCodes={selectedRegionCodes}
                         qrtrCode={qrtrCode}
                         parcelDetails={parcelDetails}
+                        reportId={reportId}
+                        onParcelFound={async (data) => {
+                            if (!reportId) return;
+                            try {
+                                await reportApi.update(reportId, {
+                                    sbpiIdNo: data.sbpiIdNo,
+                                    parcelDetails: data.parcelDetails,
+                                    parcelFetchedAt: new Date().toISOString(),
+                                    parcelSearchParams: data.searchParams,
+                                });
+                                console.log('Parcel data saved to report');
+                            } catch (error) {
+                                console.error('Failed to save parcel data:', error);
+                            }
+                        }}
                         setEparchia={setEparchia}
                         setDimos={setDimos}
                         setEnoria={setEnoria}
@@ -1413,6 +1473,7 @@ export default function FillTemplatePage() {
                         clearFyllo={clearFyllo}
                         clearSxedio={clearSxedio}
                         clearTmima={clearTmima}
+                        clearAllParcelData={clearAllParcelData}
                     />
                 )}
 

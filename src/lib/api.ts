@@ -248,7 +248,27 @@ export const reportApi = {
   getAll: () => apiRequest('/reports'),
   getAllReportsAdmin: () => apiRequest('/reports/all'),
   getById: (id: string) => apiRequest(`/reports/${id}`),
-  update: (id: string, payload: Partial<{ name: string; title: string; status: string; values: Record<string, any>; isArchived: boolean; kmlData: Record<string, any>; checklistProgress: Array<{ id: string; checked: boolean }>; checklistStatus: 'empty' | 'partial' | 'complete' }>) =>
+  update: (id: string, payload: Partial<{
+    name: string;
+    title: string;
+    status: string;
+    values: Record<string, any>;
+    isArchived: boolean;
+    kmlData: Record<string, any>;
+    checklistProgress: Array<{ id: string; checked: boolean }>;
+    checklistStatus: 'empty' | 'partial' | 'complete';
+    sbpiIdNo: number;
+    parcelDetails: any;
+    parcelFetchedAt: string;
+    parcelSearchParams: {
+      distCode: number;
+      vilCode: number;
+      qrtrCode: number;
+      sheet: string;
+      planNbr: string;
+      parcelNbr: string;
+    };
+  }>) =>
     apiRequest(`/reports/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
 
   // Generate from a saved report
@@ -423,6 +443,14 @@ export const cadastralApi = {
       sbpiIdNo: number | null;
       data: any;
       parcelDetails: any;
+      searchParams: {
+        distCode: number;
+        vilCode: number;
+        qrtrCode: number;
+        sheet: string;
+        planNbr: string;
+        parcelNbr: string;
+      };
     }>('/cadastral/query', {
       method: 'POST',
       body: JSON.stringify(params),
