@@ -160,6 +160,7 @@ export const templateApi = {
     const url = `${API_BASE_URL}/uploads/extract-pdf`;
     const form = new FormData();
     form.append('file', file);
+    // Attach Authorization header
     const authHeaders = (() => {
       if (typeof window === 'undefined') return {} as Record<string, string>;
       try {
@@ -177,7 +178,8 @@ export const templateApi = {
       const data = await res.json().catch(() => ({}));
       throw new ApiError(res.status, data.message ?? 'PDF extraction failed');
     }
-    return res.json() as Promise<{ extractedValues: Record<string, string> }>;
+    const data = await res.json();
+    return data.extractedValues as Record<string, string>;
   },
 
   // Generate report
@@ -246,7 +248,27 @@ export const reportApi = {
   getAll: () => apiRequest('/reports'),
   getAllReportsAdmin: () => apiRequest('/reports/all'),
   getById: (id: string) => apiRequest(`/reports/${id}`),
-  update: (id: string, payload: Partial<{ name: string; title: string; status: string; values: Record<string, any>; isArchived: boolean; kmlData: Record<string, any>; checklistProgress: Array<{ id: string; checked: boolean }>; checklistStatus: 'empty' | 'partial' | 'complete' }>) =>
+  update: (id: string, payload: Partial<{
+    name: string;
+    title: string;
+    status: string;
+    values: Record<string, any>;
+    isArchived: boolean;
+    kmlData: Record<string, any>;
+    checklistProgress: Array<{ id: string; checked: boolean }>;
+    checklistStatus: 'empty' | 'partial' | 'complete';
+    sbpiIdNo: number;
+    parcelDetails: any;
+    parcelFetchedAt: string;
+    parcelSearchParams: {
+      distCode: number;
+      vilCode: number;
+      qrtrCode: number;
+      sheet: string;
+      planNbr: string;
+      parcelNbr: string;
+    };
+  }>) =>
     apiRequest(`/reports/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
 
   // Generate from a saved report
@@ -392,3 +414,59 @@ export interface UserDto {
   avatarUrl: string;
   createdAt?: string;
 }
+
+// Cadastral API
+export interface RegionOption {
+  vilCode: number;
+  distCode: number;
+  name: string;
+}
+
+export const cadastralApi = {
+  // Get regions for a province
+  getRegions: (provinceCode: string) =>
+    apiRequest<{ regions: RegionOption[] }>(`/cadastral/provinces/${encodeURIComponent(provinceCode)}/regions`),
+
+  // Get quarters for a region
+  getQuarters: (distCode: number, vilCode: number) =>
+    apiRequest<{ quarters: Array<{ qrtrCode: number; qrtrName: string | null }> }>(`/cadastral/regions/${distCode}/${vilCode}/qrtr-code`),
+
+  // Get sheets for a region
+  getSheets: (distCode: number, vilCode: number, qrtrCode: number) =>
+    apiRequest<{ sheets: string[] }>(`/cadastral/sheets?distCode=${distCode}&vilCode=${vilCode}&qrtrCode=${qrtrCode}`),
+
+  // Get plans for a sheet
+  getPlans: (distCode: number, vilCode: number, qrtrCode: number, sheet: string) =>
+    apiRequest<{ plans: string[] }>(`/cadastral/plans?distCode=${distCode}&vilCode=${vilCode}&qrtrCode=${qrtrCode}&sheet=${encodeURIComponent(sheet)}`),
+
+  // Get sections (BLCK_CODE) for a plan
+  getSections: (distCode: number, vilCode: number, qrtrCode: number, sheet: string, planNbr: string) =>
+    apiRequest<{ sections: string[] }>(`/cadastral/sections?distCode=${distCode}&vilCode=${vilCode}&qrtrCode=${qrtrCode}&sheet=${encodeURIComponent(sheet)}&planNbr=${encodeURIComponent(planNbr)}`),
+
+  // Query parcel
+  queryParcel: (params: {
+    distCode: number;
+    vilCode: number;
+    qrtrCode: number;
+    sheet: string;
+    planNbr: string;
+    parcelNbr: string;
+  }) =>
+    apiRequest<{
+      success: boolean;
+      sbpiIdNo: number | null;
+      data: any;
+      parcelDetails: any;
+      searchParams: {
+        distCode: number;
+        vilCode: number;
+        qrtrCode: number;
+        sheet: string;
+        planNbr: string;
+        parcelNbr: string;
+      };
+    }>('/cadastral/query', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }),
+};

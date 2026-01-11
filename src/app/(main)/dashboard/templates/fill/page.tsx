@@ -4,11 +4,14 @@ import { useState, useEffect, useRef } from "react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X, Calendar as CalendarIcon, ExternalLink, ChevronsUpDown, Search } from "lucide-react";
+import { Download, Loader2, ChevronRight, Check, Star, Trash2, Plus, ListCheck, X, Calendar as CalendarIcon, ChevronsUpDown, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import AppendixManager from "@/components/appendix/appendix-manager";
 import ImageEditor from "@/components/image-editor";
+import { KmlUpload } from "@/components/report/kml-upload";
+import { ParcelSearch } from "@/components/report/parcel-search";
+import { PdfExtraction } from "@/components/report/pdf-extraction";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 //
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { templateApi, reportApi, ApiError, userTemplateApi, type UserTemplateDto } from "@/lib/api";
+import { templateApi, reportApi, ApiError, userTemplateApi, cadastralApi, type UserTemplateDto } from "@/lib/api";
 import { Template, ContentBlock, ImportedVariable } from "@/types/template";
 // PDF preview via <object> below; PDFCanvasViewer removed
 
@@ -129,11 +132,72 @@ export default function FillTemplatePage() {
     const pdfInputRef = useRef<HTMLInputElement | null>(null);
     const kmlInputRef = useRef<HTMLInputElement | null>(null);
 
+    // PDF Extraction state (disabled by default in main)
+    const [pdfExtractedValues, setPdfExtractedValues] = useState<Record<string, string>>({});
+    const [isExtractingPdf, setIsExtractingPdf] = useState<boolean>(false);
+    const pdfInputRef = useRef<HTMLInputElement | null>(null);
+
+    // KML Form Fields State
+    const [eparchia, setEparchia] = useState<string>("");
+    const [dimos, setDimos] = useState<string>("");
+    const [enoria, setEnoria] = useState<string>("");
+    const [fyllo, setFyllo] = useState<string>("");
+    const [sxedio, setSxedio] = useState<string>("");
+    const [tmima, setTmima] = useState<string>("");
+    const [arithmosTemaxiou, setArithmosTemaxiou] = useState<string>("");
+
+    // Region data structure with codes
+    interface RegionOption {
+        vilCode: number;
+        distCode: number;
+        name: string;
+    }
+
+    // Dropdown options (will be populated from API later)
+    const [dimosOptions, setDimosOptions] = useState<RegionOption[]>([]);
+    const [dimosOpen, setDimosOpen] = useState(false);
+    const [eparchiaOpen, setEparchiaOpen] = useState(false);
+    const [enoriaOpen, setEnoriaOpen] = useState(false);
+    const [enoriaOptions, setEnoriaOptions] = useState<Array<{ qrtrCode: number; qrtrName: string | null }>>([]);
+    const [fylloOptions, setFylloOptions] = useState<string[]>([]);
+    const [sxedioOptions, setSxedioOptions] = useState<string[]>([]);
+    const [tmimaOptions, setTmimaOptions] = useState<string[]>([]);
+
+    // Loading states for dropdowns
+    const [loadingRegions, setLoadingRegions] = useState<boolean>(false);
+    const [loadingSheets, setLoadingSheets] = useState<boolean>(false);
+    const [loadingPlans, setLoadingPlans] = useState<boolean>(false);
+    const [loadingSections, setLoadingSections] = useState<boolean>(false);
+    const [loadingQrtrCode, setLoadingQrtrCode] = useState<boolean>(false);
+    const [loadingParcelQuery, setLoadingParcelQuery] = useState<boolean>(false);
+
+    // Store selected region codes
+    const [selectedRegionCodes, setSelectedRegionCodes] = useState<{ vilCode: number; distCode: number } | null>(null);
+    const [qrtrCode, setQrtrCode] = useState<number | null>(null);
+    const [sbpiIdNo, setSbpiIdNo] = useState<number | null>(null);
+    const [parcelDetails, setParcelDetails] = useState<any>(null);
+
+    // Province code to name mapping
+    const eparchiaCodeToName: Record<string, string> = {
+        "3D3": "ΑΜΜΟΧΩΣΤΟΣ",
+        "3D2": "ΚΕΡΥΝΕΙΑ",
+        "3D4": "ΛΑΡΝΑΚΑ",
+        "3D5": "ΛΕΜΕΣΟΣ",
+        "3D1": "ΛΕΥΚΩΣΙΑ",
+        "3D6": "ΠΑΦΟΣ"
+    };
+
+    // Province options for dropdown (using codes as values)
+    const eparchiaOptions = Object.entries(eparchiaCodeToName).map(([code, name]) => ({
+        code,
+        name
+    }));
+
     // Build kmlData from form fields
     const buildKmlDataFromForm = (): Record<string, any> => {
+        // Only return form-specific fields, don't overwrite other kmlData fields
         return {
-            eparchia: eparchia || "", // This will be the code (e.g., "3D3")
-            eparchia_name: eparchia ? eparchiaCodeToName[eparchia] || "" : "", // Province name for display
+            eparchia: eparchia ? eparchiaCodeToName[eparchia] || "" : "", // Province name (e.g., "ΛΕΥΚΩΣΙΑ")
             dimos: dimos || "",
             dimos_vil_code: selectedRegionCodes?.vilCode || "",
             dimos_dist_code: selectedRegionCodes?.distCode || "",
@@ -143,10 +207,11 @@ export default function FillTemplatePage() {
             sxedio: sxedio || "",
             tmima: tmima || "",
             arithmos_temaxiou: arithmosTemaxiou || "",
+            // Note: Other fields (zone, building_coefficient, etc.) should be preserved from kmlData
         };
     };
 
-    const injectKmlIntoVariables = (incoming: Record<string, any>) => {
+    const injectKmlIntoVariables = (incoming: Record<string, any>, preserveExisting: boolean = false) => {
         if (!selectedTemplate || !incoming) return;
         setVariableValues(prev => {
             const next: VariableValue = { ...prev };
@@ -156,7 +221,15 @@ export default function FillTemplatePage() {
                         const fieldKey = (imp.kmlField as string) || '';
                         const nameKey = (imp.name as string) || fieldKey;
                         const val = incoming[fieldKey];
-                        if (nameKey && val !== undefined) next[nameKey] = String(val ?? '');
+
+                        // Only inject if value doesn't exist when preserveExisting is true
+                        const shouldInject = preserveExisting
+                            ? (nameKey && val !== undefined && (!next[nameKey] || next[nameKey] === ''))
+                            : (nameKey && val !== undefined);
+
+                        if (shouldInject) {
+                            next[nameKey] = String(val ?? '');
+                        }
                     }
                 });
             } else {
@@ -165,13 +238,100 @@ export default function FillTemplatePage() {
                         if (block.type === 'kml_variable' && block.kmlField) {
                             const key = block.kmlField as string;
                             const val = incoming[key];
-                            if (key && val !== undefined) next[key] = String(val ?? '');
+
+                            // Only inject if value doesn't exist when preserveExisting is true
+                            const shouldInject = preserveExisting
+                                ? (key && val !== undefined && (!next[key] || next[key] === ''))
+                                : (key && val !== undefined);
+
+                            if (shouldInject) {
+                                next[key] = String(val ?? '');
+                            }
                         }
                     });
                 });
             }
             return next;
         });
+    };
+
+    const mapApiResponseToKmlData = (parcelDetails: any): Record<string, string> => {
+        if (!parcelDetails) return {};
+
+        // Handle array response (take first item)
+        const data = Array.isArray(parcelDetails) ? parcelDetails[0] : parcelDetails;
+
+        // Build sheet/plan combination
+        const sheetPlanRaw = [data.PrSheetValue, data.PrPlanValue]
+            .filter(Boolean)
+            .join('/');
+
+        // Build registration number (format: registrationBlock/registrationNo)
+        const registrationNumber = [
+            String(data.PrRegistrationBlock ?? '0'),
+            String(data.PrRegistrationNo ?? '')
+        ].filter(Boolean).join('/');
+
+        // Convert decimal to percentage (e.g., 0.1 -> "10%")
+        const toPercentage = (value: number | null | undefined): string => {
+            if (value === null || value === undefined) return '';
+            return `${(value * 100).toFixed(0)}%`;
+        };
+
+        // Format currency (e.g., 16500 -> "€16,500")
+        const formatCurrency = (value: number | null | undefined): string => {
+            if (!value) return '';
+            return `€${value.toLocaleString('en-US')}`;
+        };
+
+        // Format height (e.g., 8.3 -> "8.3m")
+        const formatHeight = (value: number | null | undefined): string => {
+            if (value === null || value === undefined) return '';
+            return `${value}m`;
+        };
+
+        // Map API response fields to KML field names
+        const mapped: Record<string, string> = {
+            eparchia: data.DistrictName || data.PrDistrictNameEl || '',
+            municipality: data.MunicipalityName || data.PrMunicipalityNameEl || '',
+            region: data.PrLocation || '',
+            part: String(data.PrBlockValue ?? '').trim(),
+            plot_number: String(data.PrParcelNo ?? ''),
+            plot_area: data.PrParcelExtent ? data.PrParcelExtent.toLocaleString('en-US') : '',
+            sheet_plan: sheetPlanRaw,
+            sheet: String(data.PrSheetValue ?? ''),
+            plan: String(data.PrPlanValue ?? ''),
+            registration_number: registrationNumber,
+            property_type: data.PrSubPropertyKindNameEl || data.PrPropertyTypeNameEl || '',
+        };
+
+        // Add planning zone information if available
+        if (data.PrPlanningZone) {
+            const zone = data.PrPlanningZone;
+            if (zone.PrName) mapped.zone = zone.PrName;
+            if (zone.PrNameGr) mapped.zone_description = zone.PrNameGr;
+            if (zone.PrDensityRateQty !== undefined) mapped.building_coefficient = toPercentage(zone.PrDensityRateQty);
+            if (zone.PrCoverageRate !== undefined) mapped.coverage = toPercentage(zone.PrCoverageRate);
+            if (zone.PrStoreyNoQty !== undefined) mapped.floors = String(zone.PrStoreyNoQty);
+            if (zone.PrHeightMSR !== undefined) mapped.height = formatHeight(zone.PrHeightMSR);
+        }
+
+        // Add property values
+        if (data.PrPriceBase1 !== undefined) mapped.value_2018 = formatCurrency(data.PrPriceBase1);
+        if (data.PrPriceBase2 !== undefined) mapped.value_2021 = formatCurrency(data.PrPriceBase2);
+
+        // Filter out empty values
+        return Object.fromEntries(
+            Object.entries(mapped).filter(([_, value]) => value !== '')
+        );
+    };
+
+    const resolveUploadsUrl = (u?: string): string | undefined => {
+        if (!u) return undefined;
+        if (/^https?:\/\//i.test(u) || u.startsWith('data:')) return u;
+        const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+        if (u.startsWith('/')) return base + u;
+        return base + '/' + u;
     };
 
     async function handleKmlFile(file: File) {
@@ -272,7 +432,10 @@ export default function FillTemplatePage() {
         e.preventDefault();
         if (!e.dataTransfer?.files?.[0]) return;
         const file = e.dataTransfer.files[0];
-        if (!file.name.toLowerCase().endsWith('.kml')) return toast.error('Please drop a .kml file');
+        if (!file.name.toLowerCase().endsWith('.kml')) {
+            toast.error('Please drop a .kml file');
+            return;
+        }
         await handleKmlFile(file);
     };
 
@@ -282,58 +445,141 @@ export default function FillTemplatePage() {
         await handleKmlFile(file);
     };
 
+    // PDF Extraction handlers (disabled by default in main via flag)
+    const handlePdfDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        if (!e.dataTransfer?.files?.[0]) return;
+        const file = e.dataTransfer.files[0];
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            toast.error('Please drop a .pdf file');
+            return;
+        }
+        await handlePdfSelect({ target: { files: [file] } } as any);
+    };
+
+    const handlePdfSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsExtractingPdf(true);
+        try {
+            const extractedValues = await templateApi.extractPdf(file);
+            setPdfExtractedValues(extractedValues);
+            toast.success('PDF values extracted successfully');
+        } catch (error) {
+            console.error('Error extracting PDF:', error);
+            if (error instanceof ApiError) {
+                toast.error(error.message);
+            } else {
+                toast.error('Failed to extract PDF');
+            }
+        } finally {
+            setIsExtractingPdf(false);
+        }
+    };
+
     // Helper functions to clear cascading fields
     const clearEparchia = () => {
         setEparchia("");
+        // Province options are static (eparchiaCodeToName), no need to keep/clear
+        // Clear all dependent fields and their options
         setDimosOptions([]);
-        setDimos("");
-        setSelectedRegionCodes(null);
-        setQrtrCode(null);
-        setEnoria("");
-        setFyllo("");
-        setSxedio("");
-        setTmima("");
-        setArithmosTemaxiou("");
-    };
-
-    const clearDimos = () => {
         setDimos("");
         setSelectedRegionCodes(null);
         setQrtrCode(null);
         setEnoria("");
         setEnoriaOptions([]);
         setFyllo("");
+        setFylloOptions([]);
         setSxedio("");
+        setSxedioOptions([]);
         setTmima("");
+        setTmimaOptions([]);
+        setArithmosTemaxiou("");
+    };
+
+    const clearDimos = () => {
+        setDimos("");
+        // Keep dimosOptions intact so user can re-select
+        setSelectedRegionCodes(null);
+        setQrtrCode(null);
+        // Clear all dependent fields and their options
+        setEnoria("");
+        setEnoriaOptions([]);
+        setFyllo("");
+        setFylloOptions([]);
+        setSxedio("");
+        setSxedioOptions([]);
+        setTmima("");
+        setTmimaOptions([]);
         setArithmosTemaxiou("");
     };
 
     const clearEnoria = () => {
         setEnoria("");
+        setQrtrCode(null);
+        // Keep enoriaOptions intact so user can re-select
+        // Clear all dependent fields and their options
         setFyllo("");
+        setFylloOptions([]);
         setSxedio("");
+        setSxedioOptions([]);
         setTmima("");
+        setTmimaOptions([]);
         setArithmosTemaxiou("");
     };
 
     const clearFyllo = () => {
         setFyllo("");
-        setFylloOptions([]);
+        // Keep fylloOptions intact so user can re-select
+        // Clear only dependent fields and their options
         setSxedio("");
+        setSxedioOptions([]);
         setTmima("");
+        setTmimaOptions([]);
         setArithmosTemaxiou("");
     };
 
     const clearSxedio = () => {
         setSxedio("");
-        setSxedioOptions([]);
-        setTmima(""); // Clear section when plan is cleared
+        // Keep sxedioOptions intact so user can re-select
+        // Clear only dependent fields and their options
+        setTmima("");
+        setTmimaOptions([]);
         setArithmosTemaxiou("");
     };
 
     const clearTmima = () => {
         setTmima("");
+        // Keep tmimaOptions intact so user can re-select
+        // Clear only dependent fields
         setArithmosTemaxiou("");
+    };
+
+    const clearAllParcelData = () => {
+        // Clear all form fields
+        setEparchia("");
+        setDimos("");
+        setEnoria("");
+        setFyllo("");
+        setSxedio("");
+        setTmima("");
+        setArithmosTemaxiou("");
+
+        // Clear selected codes
+        setSelectedRegionCodes(null);
+        setQrtrCode(null);
+        setSbpiIdNo(null);
+
+        // Clear parcel details
+        setParcelDetails(null);
+
+        // Clear dropdown options
+        setDimosOptions([]);
+        setEnoriaOptions([]);
+        setFylloOptions([]);
+        setSxedioOptions([]);
+        setTmimaOptions([]);
     };
 
     // Fetch data when province is selected
@@ -342,324 +588,176 @@ export default function FillTemplatePage() {
             setDimosOptions([]);
             setDimos("");
             setSelectedRegionCodes(null);
+            setLoadingRegions(false);
             return;
         }
 
-        // Extract the numeric part from the province code (e.g., "3D1" -> "1", "3D3" -> "3")
-        const provinceCode = eparchia.replace(/^3D/, '');
-        const apiUrl = `https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/11/query?f=json&outFields=VIL_CODE,DIST_CODE,VIL_NM_G&returnDistinctValues=false&returnGeometry=false&where=DIST_CODE%3D${provinceCode}`;
-
-        fetch(apiUrl)
-            .then(response => response.json())
+        setLoadingRegions(true);
+        cadastralApi.getRegions(eparchia)
             .then(data => {
                 console.log('Province API Response:', data);
-
-                // Parse the response and extract region options
-                if (data.features && Array.isArray(data.features)) {
-                    const regions: RegionOption[] = data.features.map((feature: any) => ({
-                        vilCode: feature.attributes.VIL_CODE,
-                        distCode: feature.attributes.DIST_CODE,
-                        name: feature.attributes.VIL_NM_G
-                    }));
-
-                    // Sort by name for better UX
-                    regions.sort((a, b) => a.name.localeCompare(b.name, 'el'));
-
-                    setDimosOptions(regions);
+                if (data.regions && Array.isArray(data.regions)) {
+                    setDimosOptions(data.regions);
+                } else {
+                    setDimosOptions([]);
                 }
             })
             .catch(error => {
                 console.error('Error fetching province data:', error);
                 toast.error('Failed to fetch regions');
+                setDimosOptions([]);
+            })
+            .finally(() => {
+                setLoadingRegions(false);
             });
     }, [eparchia]);
 
-    // Fetch data when region is selected
+    // Fetch quarters and set enoria when region is selected
     useEffect(() => {
         console.log('Region useEffect triggered:', { selectedRegionCodes, dimos });
 
         if (!selectedRegionCodes || !dimos) {
-            console.log('Region useEffect: Missing required data, clearing QRTR_CODE');
             setQrtrCode(null);
             setEnoria("");
             setEnoriaOptions([]);
+            setLoadingQrtrCode(false);
             return;
         }
 
-        // Set Parish to "0" when region is selected
-        setEnoria("0");
-        setEnoriaOptions(["0"]);
-
+        setLoadingQrtrCode(true);
         const { distCode, vilCode } = selectedRegionCodes;
-        const apiUrl = `https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/10/query?f=json&outFields=QRTR_CODE,VIL_CODE,DIST_CODE,QRTR_NM_G&returnDistinctValues=false&returnGeometry=false&where=DIST_CODE%3D${distCode}+and+VIL_CODE%3D${vilCode}`;
-
-        console.log('Making Region API call:', apiUrl);
-
-        fetch(apiUrl)
-            .then(response => {
-                console.log('Region API Response status:', response.status);
-                return response.json();
-            })
+        cadastralApi.getQuarters(distCode, vilCode)
             .then(data => {
-                console.log('Region API Response:', data);
+                console.log('Quarters API Response:', data);
+                const quarters = data.quarters || [];
+                setEnoriaOptions(quarters);
 
-                // Extract QRTR_CODE from the response
-                if (data.features && Array.isArray(data.features) && data.features.length > 0) {
-                    const qrtrCodeValue = data.features[0].attributes?.QRTR_CODE;
-                    console.log('Extracted QRTR_CODE:', qrtrCodeValue);
-                    if (qrtrCodeValue !== undefined && qrtrCodeValue !== null) {
-                        setQrtrCode(qrtrCodeValue);
-                    }
+                // Auto-select if only one quarter is returned
+                if (quarters.length === 1) {
+                    const singleQuarter = quarters[0];
+                    setEnoria(String(singleQuarter.qrtrCode));
+                    setQrtrCode(singleQuarter.qrtrCode);
+                    console.log('Auto-selected single quarter:', singleQuarter.qrtrCode);
                 } else {
-                    console.log('No features found in Region API response');
+                    // Clear selection if multiple quarters
+                    setEnoria("");
+                    setQrtrCode(null);
                 }
             })
             .catch(error => {
-                console.error('Error fetching region data:', error);
+                console.error('Error fetching quarters:', error);
+                setEnoriaOptions([]);
+                setEnoria("");
                 setQrtrCode(null);
+            })
+            .finally(() => {
+                setLoadingQrtrCode(false);
             });
     }, [selectedRegionCodes, dimos]);
 
-    // Fetch sheet data when QRTR_CODE is available
+    // Fetch sheet options when region and qrtrCode are available
     useEffect(() => {
-        console.log('Sheet useEffect triggered:', { selectedRegionCodes, qrtrCode });
+        console.log('Sheet useEffect triggered:', { selectedRegionCodes, qrtrCode, enoria });
 
-        if (!selectedRegionCodes || qrtrCode === null || qrtrCode === undefined) {
-            console.log('Sheet useEffect: Missing required data, clearing sheet options');
+        if (!selectedRegionCodes || qrtrCode === null || qrtrCode === undefined || !enoria) {
             setFylloOptions([]);
             setFyllo("");
+            setLoadingSheets(false);
             return;
         }
 
+        setLoadingSheets(true);
         const { distCode, vilCode } = selectedRegionCodes;
-        const apiUrl = `https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/0/query?f=json&outFields=SHEET,SHEET,DIST_CODE,VIL_CODE,QRTR_CODE&returnDistinctValues=true&returnGeometry=false&where=DIST_CODE%3D${distCode}+and+VIL_CODE%3D${vilCode}+and+QRTR_CODE%3D${qrtrCode}`;
-
-        console.log('Making Sheet API call:', apiUrl);
-
-        fetch(apiUrl)
-            .then(response => {
-                console.log('Sheet API Response status:', response.status);
-                return response.json();
-            })
+        cadastralApi.getSheets(distCode, vilCode, qrtrCode)
             .then(data => {
                 console.log('Sheet API Response:', data);
-
-                // Extract unique SHEET values from the response
-                if (data.features && Array.isArray(data.features)) {
-                    const sheets = new Set<string>();
-                    data.features.forEach((feature: any) => {
-                        const sheet = feature.attributes?.SHEET;
-                        if (sheet !== undefined && sheet !== null && sheet !== "") {
-                            sheets.add(String(sheet));
-                        }
-                    });
-
-                    // Convert to array and sort
-                    const sheetArray = Array.from(sheets).sort((a, b) => {
-                        // Try numeric sort first, fallback to string sort
-                        const numA = Number(a);
-                        const numB = Number(b);
-                        if (!isNaN(numA) && !isNaN(numB)) {
-                            return numA - numB;
-                        }
-                        return a.localeCompare(b);
-                    });
-
-                    console.log('Extracted sheets:', sheetArray);
-                    setFylloOptions(sheetArray);
+                if (data.sheets && Array.isArray(data.sheets)) {
+                    setFylloOptions(data.sheets);
                 } else {
-                    console.log('No features found in Sheet API response');
                     setFylloOptions([]);
                 }
             })
             .catch(error => {
                 console.error('Error fetching sheet data:', error);
                 setFylloOptions([]);
+            })
+            .finally(() => {
+                setLoadingSheets(false);
             });
-    }, [selectedRegionCodes, qrtrCode]);
+    }, [selectedRegionCodes, qrtrCode, enoria]);
 
-    // Fetch plan data when sheet is selected
+    // Fetch plan options when sheet is selected
     useEffect(() => {
         console.log('Plan useEffect triggered:', { selectedRegionCodes, qrtrCode, fyllo });
 
         if (!selectedRegionCodes || qrtrCode === null || qrtrCode === undefined || !fyllo) {
-            console.log('Plan useEffect: Missing required data, clearing plan options');
             setSxedioOptions([]);
             setSxedio("");
+            setLoadingPlans(false);
             return;
         }
 
+        setLoadingPlans(true);
         const { distCode, vilCode } = selectedRegionCodes;
-        const apiUrl = `https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/0/query?f=json&outFields=PLAN_NBR,PLAN_NBR,DIST_CODE,VIL_CODE,QRTR_CODE,SHEET,SRC_SL_CODE&returnDistinctValues=true&returnGeometry=false&where=DIST_CODE%3D${distCode}+and+VIL_CODE%3D${vilCode}+and+QRTR_CODE%3D${qrtrCode}+and+SHEET%3D${fyllo}`;
-
-        console.log('Making Plan API call:', apiUrl);
         console.log('Using values:', { distCode, vilCode, qrtrCode, sheet: fyllo });
 
-        fetch(apiUrl)
-            .then(response => {
-                console.log('Plan API Response status:', response.status);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.json();
-            })
+        cadastralApi.getPlans(distCode, vilCode, qrtrCode, fyllo)
             .then(data => {
                 console.log('Plan API Response:', data);
-                console.log('Plan API Response features count:', data.features?.length || 0);
-
-                // Extract unique PLAN_NBR values from the response
-                if (data.features && Array.isArray(data.features)) {
-                    const plans = new Set<string>();
-                    data.features.forEach((feature: any) => {
-                        const planNbr = feature.attributes?.PLAN_NBR;
-                        if (planNbr !== undefined && planNbr !== null && planNbr !== "") {
-                            plans.add(String(planNbr));
-                        }
-                    });
-
-                    // Convert to array and sort
-                    const planArray = Array.from(plans).sort((a, b) => {
-                        // Try to extract numeric parts for sorting
-                        const numA = parseInt(a.match(/\d+/)?.[0] || '0');
-                        const numB = parseInt(b.match(/\d+/)?.[0] || '0');
-                        if (numA !== numB) {
-                            return numA - numB;
-                        }
-                        // If numeric parts are equal, sort alphabetically
-                        return a.localeCompare(b);
-                    });
-
-                    console.log('Extracted plans:', planArray);
-                    setSxedioOptions(planArray);
+                if (data.plans && Array.isArray(data.plans)) {
+                    setSxedioOptions(data.plans);
                 } else {
-                    console.log('No features found in Plan API response');
                     setSxedioOptions([]);
                 }
             })
             .catch(error => {
                 console.error('Error fetching plan data:', error);
                 setSxedioOptions([]);
+            })
+            .finally(() => {
+                setLoadingPlans(false);
             });
     }, [selectedRegionCodes, qrtrCode, fyllo]);
 
-    // Set section to "0" and disable when plan is selected
+    // Fetch section options when plan is selected
     useEffect(() => {
-        if (sxedio) {
-            setTmima("0");
-            // Ensure "0" is in the options so it can be displayed
-            setTmimaOptions(["0"]);
-        } else {
-            setTmima("");
+        console.log('Section useEffect triggered:', { selectedRegionCodes, qrtrCode, fyllo, sxedio });
+
+        if (!selectedRegionCodes || qrtrCode === null || qrtrCode === undefined || !fyllo || !sxedio) {
             setTmimaOptions([]);
-        }
-    }, [sxedio]);
-
-    // Update kmlData when form fields change
-    useEffect(() => {
-        const newKmlData = buildKmlDataFromForm();
-        const hasData = Object.values(newKmlData).some(v => v !== "");
-        if (hasData) {
-            setKmlData(newKmlData);
-            injectKmlIntoVariables(newKmlData);
+            setTmima("");
+            setLoadingSections(false);
+            return;
         }
 
-    }, [eparchia, dimos, enoria, fyllo, sxedio, tmima, arithmosTemaxiou, selectedTemplate]);
+        setLoadingSections(true);
+        const { distCode, vilCode } = selectedRegionCodes;
+        console.log('Using values:', { distCode, vilCode, qrtrCode, sheet: fyllo, planNbr: sxedio });
 
-    const resolveUploadsUrl = (u?: string): string | undefined => {
-        if (!u) return undefined;
-        if (/^https?:\/\//i.test(u) || u.startsWith('data:')) return u;
-        const base = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
-        if (u.startsWith('/')) return base + u;
-        return base + '/' + u;
-    };
+        cadastralApi.getSections(distCode, vilCode, qrtrCode, fyllo, sxedio)
+            .then(data => {
+                console.log('Section API Response:', data);
+                const sections = data.sections || [];
+                setTmimaOptions(sections);
 
-    async function handlePdfFile(file: File) {
-        setIsExtractingPdf(true);
-
-        // Clear old PDF extracted values before processing new file
-        const pdfExtractionKeys = [
-            "ΑΡ. ΕΚΤΙΜΗΣΗΣ",
-            "ΟΝΟΜΑ ΠΕΛΑΤΗ",
-            "Υπάλληλος Τράπεζας",
-            "ΚΑΤΑΣΤΗΜΑ / ΥΠΗΡΕΣΙΑ ΤΡΑΠΕΖΑΣ"
-        ];
-
-        // Clear from pdfExtractedValues state
-        setPdfExtractedValues(prev => {
-            const cleared = { ...prev };
-            pdfExtractionKeys.forEach(key => {
-                delete cleared[key];
-            });
-            return cleared;
-        });
-
-        // Clear from variableValues state
-        setVariableValues(prev => {
-            const cleared = { ...prev };
-            pdfExtractionKeys.forEach(key => {
-                delete cleared[key];
-            });
-            return cleared;
-        });
-
-        try {
-            const result = await templateApi.extractPdf(file);
-            const extractedValues = result.extractedValues;
-
-            // Update extracted values state with all extracted values
-            setPdfExtractedValues(prev => ({
-                ...prev,
-                ...extractedValues
-            }));
-
-            // Update report values with all extracted values
-            setVariableValues(prev => ({
-                ...prev,
-                ...extractedValues
-            }));
-
-            // Save to report if it exists
-            if (reportId) {
-                try {
-                    await reportApi.update(reportId, {
-                        values: {
-                            ...variableValues,
-                            ...extractedValues
-                        }
-                    });
-                } catch (err) {
-                    console.error('Failed to save PDF extracted values to report:', err);
+                // Auto-select if only one section is returned
+                if (sections.length === 1) {
+                    setTmima(sections[0]);
+                    console.log('Auto-selected single section:', sections[0]);
+                } else {
+                    // Clear selection if multiple sections
+                    setTmima("");
                 }
-            }
-
-            // Show success message with all extracted values
-            const extractedCount = Object.keys(extractedValues).length;
-            const extractedLabels = Object.keys(extractedValues).join(', ');
-            toast.success(`Extracted ${extractedCount} value(s): ${extractedLabels}`);
-        } catch (error: any) {
-            toast.error(error.message || 'Failed to extract values from PDF');
-        } finally {
-            setIsExtractingPdf(false);
-        }
-    }
-
-    const handlePdfDrop = async (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        if (!e.dataTransfer?.files?.[0]) return;
-        const file = e.dataTransfer.files[0];
-        if (!file.name.toLowerCase().endsWith('.pdf')) return toast.error('Please drop a .pdf file');
-        await handlePdfFile(file);
-    };
-
-    const handlePdfSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        // Reset input so the same file can be selected again
-        if (e.target) {
-            e.target.value = '';
-        }
-        await handlePdfFile(file);
-    };
+            })
+            .catch(error => {
+                console.error('Error fetching sections:', error);
+                setTmimaOptions([]);
+                setTmima("");
+            })
+            .finally(() => {
+                setLoadingSections(false);
+            });
+    }, [selectedRegionCodes, qrtrCode, fyllo, sxedio]);
 
     useEffect(() => {
         loadTemplates();
@@ -706,24 +804,37 @@ export default function FillTemplatePage() {
                     if ((report as any).kmlData && typeof (report as any).kmlData === 'object') {
                         const loadedKmlData = (report as any).kmlData || {};
                         setKmlData(loadedKmlData);
-                        // Populate form fields from loaded KML data
-                        setEparchia(loadedKmlData.eparchia || "");
-                        setDimos(loadedKmlData.dimos || "");
-                        if (loadedKmlData.dimos_vil_code && loadedKmlData.dimos_dist_code) {
-                            setSelectedRegionCodes({
-                                vilCode: loadedKmlData.dimos_vil_code,
-                                distCode: loadedKmlData.dimos_dist_code
-                            });
+                        // Use preserveExisting: true to NOT overwrite values that were already loaded from report.values
+                        injectKmlIntoVariables(loadedKmlData, true);
+
+                        // Populate form fields if they exist in the saved data
+                        if (loadedKmlData.eparchia) {
+                            setEparchia(loadedKmlData.eparchia || "");
+                            setDimos(loadedKmlData.dimos || "");
+                            if (loadedKmlData.dimos_vil_code && loadedKmlData.dimos_dist_code) {
+                                setSelectedRegionCodes({
+                                    vilCode: loadedKmlData.dimos_vil_code,
+                                    distCode: loadedKmlData.dimos_dist_code
+                                });
+                            }
+                            setEnoria(loadedKmlData.enoria || "");
+                            setFyllo(loadedKmlData.fyllo || "");
+                            setSxedio(loadedKmlData.sxedio || "");
+                            setTmima(loadedKmlData.tmima || "");
+                            setArithmosTemaxiou(loadedKmlData.arithmos_temaxiou || "");
+                        } else {
+                            // Clear form fields if no saved form data
+                            setEparchia("");
+                            setDimos("");
+                            setEnoria("");
+                            setFyllo("");
+                            setSxedio("");
+                            setTmima("");
+                            setArithmosTemaxiou("");
                         }
-                        setEnoria(loadedKmlData.enoria || "");
-                        setFyllo(loadedKmlData.fyllo || "");
-                        setSxedio(loadedKmlData.sxedio || "");
-                        setTmima(loadedKmlData.tmima || "");
-                        setArithmosTemaxiou(loadedKmlData.arithmos_temaxiou || "");
-                        injectKmlIntoVariables(loadedKmlData);
                     } else {
                         setKmlData({});
-                        // Reset form fields
+                        // Clear form fields
                         setEparchia("");
                         setDimos("");
                         setEnoria("");
@@ -731,6 +842,33 @@ export default function FillTemplatePage() {
                         setSxedio("");
                         setTmima("");
                         setArithmosTemaxiou("");
+                    }
+
+                    // Load saved parcel data if present
+                    if ((report as any).sbpiIdNo && (report as any).parcelDetails) {
+                        setSbpiIdNo((report as any).sbpiIdNo);
+                        setParcelDetails((report as any).parcelDetails);
+
+                        // Map parcel details to KML data and inject into variables
+                        // Use preserveExisting: true to NOT overwrite values that already exist
+                        const mappedData = mapApiResponseToKmlData((report as any).parcelDetails);
+                        if (Object.keys(mappedData).length > 0) {
+                            injectKmlIntoVariables(mappedData, true);
+                        }
+
+                        console.log('Loaded saved parcel data:', {
+                            sbpiIdNo: (report as any).sbpiIdNo,
+                            fetchedAt: (report as any).parcelFetchedAt
+                        });
+                    }
+
+                    // Restore parcel search form fields if they were saved
+                    if ((report as any).parcelSearchParams) {
+                        const params = (report as any).parcelSearchParams;
+                        // Note: We're not restoring the form fields from parcelSearchParams
+                        // because they might already be set from kmlData above
+                        // The parcelSearchParams are mainly for re-querying if needed
+                        console.log('Parcel search params available:', params);
                     }
                     setStep(2);
                     return;
@@ -1425,606 +1563,154 @@ export default function FillTemplatePage() {
 
             {/* Step 2: KML Upload (only if template requires KML) */}
             {selectedTemplate && selectedTemplate.requiresKml && step === 2 && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Upload KML</CardTitle>
-                        <CardDescription>
-                            {hasKmlData
-                                ? 'KML data found for this report. Review below or replace it by uploading another file.'
-                                : 'Drag and drop a .kml file or click to select. Extracted details will be saved to this report.'}
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <input ref={kmlInputRef} type="file" accept=".kml" className="hidden" onChange={handleKmlSelect} />
-                        {!hasKmlData && (
-                            <div
-                                onDragOver={(e) => { e.preventDefault(); }}
-                                onDrop={handleKmlDrop}
-                                className="border-2 border-dashed rounded-md p-8 text-center cursor-pointer"
-                                onClick={() => kmlInputRef.current?.click()}
-                            >
-                                <p className="text-sm text-muted-foreground">Drop KML here or click to select</p>
-                            </div>
-                        )}
-                        {hasKmlData && (
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {Object.entries(kmlData).map(([k, v]) => (
-                                    <div key={k} className="text-sm"><span className="text-muted-foreground">{k}:</span> <span className="font-medium break-words">{String(v || '')}</span></div>
-                                ))}
-                            </div>
-                        )}
-                        {hasKmlData && (
-                            <div className="mt-6">
-                                <Button variant="outline" onClick={() => kmlInputRef.current?.click()}>Upload another KML</Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                <KmlUpload
+                    hasKmlData={hasKmlData}
+                    kmlData={kmlData}
+                    onKmlSelect={handleKmlSelect}
+                    onKmlDrop={handleKmlDrop}
+                />
             )}
 
-            {/* Step 2: KML Data Entry (only if template requires KML) - COMMENTED OUT FOR NOW */}
+            {/* Step 2: KML Data Entry (Parcel Search) (only if template requires KML) */}
             {(() => {
-                const SHOW_KML_DATA_ENTRY = false; // Set to true to restore this section
+                const SHOW_KML_DATA_ENTRY = true; // Set to false to disable KML data entry form
                 return SHOW_KML_DATA_ENTRY && selectedTemplate && selectedTemplate.requiresKml && step === 2;
             })() && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Enter KML Data</CardTitle>
-                            <CardDescription>
-                                Fill in the cadastral information. Values will be fetched from the API.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Left Column: All form fields */}
-                                <div className="space-y-4">
-                                    <div className="space-y-3">
-                                        <Label htmlFor="eparchia">Επαρχία (Province)</Label>
-                                        <Popover open={eparchiaOpen} onOpenChange={setEparchiaOpen}>
-                                            <PopoverTrigger asChild>
-                                                <div className="relative">
-                                                    <Button
-                                                        variant="outline"
-                                                        role="combobox"
-                                                        aria-expanded={eparchiaOpen}
-                                                        className="w-full justify-between bg-gray-100"
-                                                    >
-                                                        {eparchia
-                                                            ? eparchiaOptions.find((option) => option.code === eparchia)?.name
-                                                            : "Επαρχία..."}
-                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                                    </Button>
-                                                    {eparchia && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent z-10"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                clearEparchia();
-                                                            }}
-                                                        >
-                                                            <X className="h-4 w-4 text-muted-foreground" />
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                                                <Command>
-                                                    <CommandInput placeholder="Αναζήτηση επαρχίας..." />
-                                                    <CommandList>
-                                                        <CommandEmpty>Δεν βρέθηκε επαρχία.</CommandEmpty>
-                                                        <CommandGroup>
-                                                            {eparchiaOptions.map((option) => (
-                                                                <CommandItem
-                                                                    key={option.code}
-                                                                    value={option.name}
-                                                                    onSelect={() => {
-                                                                        setEparchia(option.code === eparchia ? "" : option.code);
-                                                                        setEparchiaOpen(false);
-                                                                    }}
-                                                                >
-                                                                    <Check
-                                                                        className={`mr-2 h-4 w-4 ${eparchia === option.code ? "opacity-100" : "opacity-0"
-                                                                            }`}
-                                                                    />
-                                                                    {option.name}
-                                                                </CommandItem>
-                                                            ))}
-                                                        </CommandGroup>
-                                                    </CommandList>
-                                                </Command>
-                                            </PopoverContent>
-                                        </Popover>
-                                    </div>
+                    <ParcelSearch
+                        eparchiaCodeToName={eparchiaCodeToName}
+                        eparchia={eparchia}
+                        dimos={dimos}
+                        enoria={enoria}
+                        fyllo={fyllo}
+                        sxedio={sxedio}
+                        tmima={tmima}
+                        arithmosTemaxiou={arithmosTemaxiou}
+                        dimosOptions={dimosOptions}
+                        enoriaOptions={enoriaOptions}
+                        fylloOptions={fylloOptions}
+                        sxedioOptions={sxedioOptions}
+                        tmimaOptions={tmimaOptions}
+                        dimosOpen={dimosOpen}
+                        eparchiaOpen={eparchiaOpen}
+                        loadingRegions={loadingRegions}
+                        loadingQrtrCode={loadingQrtrCode}
+                        loadingSheets={loadingSheets}
+                        loadingPlans={loadingPlans}
+                        loadingSections={loadingSections}
+                        loadingParcelQuery={loadingParcelQuery}
+                        selectedRegionCodes={selectedRegionCodes}
+                        qrtrCode={qrtrCode}
+                        parcelDetails={parcelDetails}
+                        reportId={reportId}
+                        onParcelFound={async (data) => {
+                            if (!reportId) return;
+                            try {
+                                // Map API response to KML data structure
+                                const mappedKmlData = mapApiResponseToKmlData(data.parcelDetails);
 
-                                    <div className="space-y-3">
-                                        <Label htmlFor="dimos">Περιοχή (Region)</Label>
-                                        <Popover open={dimosOpen} onOpenChange={setDimosOpen}>
-                                            <PopoverTrigger asChild>
-                                                <div className="relative">
-                                                    <Button
-                                                        variant="outline"
-                                                        role="combobox"
-                                                        aria-expanded={dimosOpen}
-                                                        className="w-full justify-between bg-gray-100"
-                                                        disabled={!eparchia || dimosOptions.length === 0}
-                                                    >
-                                                        {dimos
-                                                            ? dimosOptions.find((option) => option.name === dimos)?.name
-                                                            : "Περιοχή..."}
-                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                                    </Button>
-                                                    {dimos && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent z-10"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                clearDimos();
-                                                            }}
-                                                        >
-                                                            <X className="h-4 w-4 text-muted-foreground" />
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                                                <Command>
-                                                    <CommandInput placeholder="Αναζήτηση περιοχής..." />
-                                                    <CommandList>
-                                                        <CommandEmpty>Δεν βρέθηκε περιοχή.</CommandEmpty>
-                                                        <CommandGroup>
-                                                            {dimosOptions.map((option) => (
-                                                                <CommandItem
-                                                                    key={`${option.vilCode}-${option.distCode}`}
-                                                                    value={option.name}
-                                                                    onSelect={() => {
-                                                                        const newDimos = option.name === dimos ? "" : option.name;
-                                                                        const newCodes = newDimos ? {
-                                                                            vilCode: option.vilCode,
-                                                                            distCode: option.distCode
-                                                                        } : null;
-                                                                        console.log('Region selected:', { newDimos, newCodes });
-                                                                        setDimos(newDimos);
-                                                                        setSelectedRegionCodes(newCodes);
-                                                                        setDimosOpen(false);
-                                                                    }}
-                                                                >
-                                                                    <Check
-                                                                        className={`mr-2 h-4 w-4 ${dimos === option.name ? "opacity-100" : "opacity-0"
-                                                                            }`}
-                                                                    />
-                                                                    {option.name}
-                                                                </CommandItem>
-                                                            ))}
-                                                        </CommandGroup>
-                                                    </CommandList>
-                                                </Command>
-                                            </PopoverContent>
-                                        </Popover>
-                                    </div>
+                                // Also get the current form data
+                                const formKmlData = buildKmlDataFromForm();
 
-                                    <div className="space-y-3">
-                                        <Label htmlFor="enoria">Ενορία (Parish)</Label>
-                                        <Popover open={false} onOpenChange={() => { }}>
-                                            <PopoverTrigger asChild>
-                                                <div className="relative">
-                                                    <Button
-                                                        variant="outline"
-                                                        role="combobox"
-                                                        aria-expanded={false}
-                                                        className="w-full justify-between bg-gray-100"
-                                                        disabled={true}
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                        }}
-                                                    >
-                                                        {enoria || "Ενορία..."}
-                                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                                    </Button>
-                                                </div>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                                                <Command>
-                                                    <CommandInput placeholder="Αναζήτηση ενορίας..." />
-                                                    <CommandList>
-                                                        <CommandEmpty>Δεν βρέθηκε ενορία.</CommandEmpty>
-                                                        <CommandGroup>
-                                                            {enoriaOptions.map((option) => (
-                                                                <CommandItem
-                                                                    key={option}
-                                                                    value={option}
-                                                                    onSelect={() => {
-                                                                        setEnoria(option === enoria ? "" : option);
-                                                                        setEnoriaOpen(false);
-                                                                    }}
-                                                                >
-                                                                    <Check
-                                                                        className={`mr-2 h-4 w-4 ${enoria === option ? "opacity-100" : "opacity-0"
-                                                                            }`}
-                                                                    />
-                                                                    {option}
-                                                                </CommandItem>
-                                                            ))}
-                                                        </CommandGroup>
-                                                    </CommandList>
-                                                </Command>
-                                            </PopoverContent>
-                                        </Popover>
-                                    </div>
+                                // Merge: existing kmlData -> form data -> API data (API data takes precedence)
+                                const updatedKmlData = {
+                                    ...kmlData,
+                                    ...formKmlData,
+                                    ...mappedKmlData,
+                                };
 
-                                    {/* Sheet, Plan, and Section in one row */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-                                        <div className="space-y-3 w-full">
-                                            <Label htmlFor="fyllo">Φύλλο (Sheet)</Label>
-                                            <div className="relative w-full">
-                                                <Select
-                                                    value={fyllo}
-                                                    onValueChange={setFyllo}
-                                                    disabled={!dimos}
-                                                >
-                                                    <SelectTrigger id="fyllo" className="bg-gray-100 w-full">
-                                                        <SelectValue placeholder="Φύλλο..." />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {fylloOptions.map((option) => (
-                                                            <SelectItem key={option} value={option}>
-                                                                {option}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                {fyllo && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            clearFyllo();
-                                                        }}
-                                                    >
-                                                        <X className="h-4 w-4 text-muted-foreground" />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
+                                // Inject the mapped values into template variables
+                                injectKmlIntoVariables(mappedKmlData);
 
-                                        <div className="space-y-3 w-full">
-                                            <Label htmlFor="sxedio">Σχέδιο (Plan)</Label>
-                                            <div className="relative w-full">
-                                                <Select
-                                                    value={sxedio}
-                                                    onValueChange={setSxedio}
-                                                    disabled={!fyllo}
-                                                >
-                                                    <SelectTrigger id="sxedio" className="bg-gray-100 w-full">
-                                                        <SelectValue placeholder="Σχέδιο..." />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {sxedioOptions.map((option) => (
-                                                            <SelectItem key={option} value={option}>
-                                                                {option}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                {sxedio && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="absolute right-8 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            clearSxedio();
-                                                        }}
-                                                    >
-                                                        <X className="h-4 w-4 text-muted-foreground" />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        </div>
+                                // Update kmlData state
+                                setKmlData(updatedKmlData);
 
-                                        <div className="space-y-3 w-full">
-                                            <Label htmlFor="tmima">Τμήμα (Section)</Label>
-                                            <div className="relative w-full">
-                                                <Select
-                                                    value={tmima}
-                                                    onValueChange={() => { }}
-                                                    disabled={true}
-                                                >
-                                                    <SelectTrigger id="tmima" className="bg-gray-100 w-full">
-                                                        <SelectValue placeholder="Τμήμα..." />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {tmimaOptions.map((option) => (
-                                                            <SelectItem key={option} value={option}>
-                                                                {option}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                        </div>
-                                    </div>
+                                // Log what we're about to save
+                                console.log('Saving kmlData to database:', updatedKmlData);
+                                console.log('API mapped fields:', Object.keys(mappedKmlData));
 
-                                    <div className="space-y-3">
-                                        <Label htmlFor="arithmos-temaxiou">Αριθμός Τεμαχίου (Parcel Number)</Label>
-                                        <div className="relative">
-                                            <Input
-                                                id="arithmos-temaxiou"
-                                                type="text"
-                                                placeholder="Αριθμός Τεμαχίου..."
-                                                value={arithmosTemaxiou}
-                                                onChange={(e) => setArithmosTemaxiou(e.target.value)}
-                                                className="bg-gray-100 pr-8"
-                                            />
-                                            {arithmosTemaxiou && (
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-transparent"
-                                                    onClick={() => setArithmosTemaxiou("")}
-                                                >
-                                                    <X className="h-4 w-4 text-muted-foreground" />
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Find Button */}
-                                    <div className="flex justify-start pt-2">
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <span>
-                                                        <Button
-                                                            onClick={async () => {
-                                                                // Validate required fields
-                                                                if (!selectedRegionCodes?.distCode || !selectedRegionCodes?.vilCode || !fyllo || !sxedio || !arithmosTemaxiou) {
-                                                                    toast.error('Please fill in all required fields');
-                                                                    return;
-                                                                }
-
-                                                                try {
-                                                                    // Build the where clause
-                                                                    const distCode = selectedRegionCodes.distCode;
-                                                                    const vilCode = selectedRegionCodes.vilCode;
-                                                                    const qrtrCodeValue = qrtrCode !== null && qrtrCode !== undefined ? qrtrCode : 0;
-                                                                    const blckCode = 0; // Default to 0 as per example
-                                                                    const sheet = fyllo;
-                                                                    const planNbr = sxedio; // This will be quoted in the where clause
-                                                                    const parcelNbr = arithmosTemaxiou;
-
-                                                                    // Build where clause: DIST_CODE=1+and+VIL_CODE=411+and+QRTR_CODE=0+and+BLCK_CODE=0+and+SHEET=28+and+PLAN_NBR='61'+and+PARCEL_NBR=5
-                                                                    const whereClause = `DIST_CODE=${distCode}+and+VIL_CODE=${vilCode}+and+QRTR_CODE=${qrtrCodeValue}+and+BLCK_CODE=${blckCode}+and+SHEET=${sheet}+and+PLAN_NBR='${planNbr}'+and+PARCEL_NBR=${parcelNbr}`;
-
-                                                                    // Build the outSR parameter (URL encoded JSON)
-                                                                    const outSR = {
-                                                                        wkid: 102100,
-                                                                        latestWkid: 3857,
-                                                                        xyTolerance: 0.001,
-                                                                        zTolerance: 0.001,
-                                                                        mTolerance: 0.001,
-                                                                        falseX: -20037700,
-                                                                        falseY: -30241100,
-                                                                        xyUnits: 10000,
-                                                                        falseZ: -100000,
-                                                                        zUnits: 10000,
-                                                                        falseM: -100000,
-                                                                        mUnits: 10000
-                                                                    };
-
-                                                                    // Build the full URL - manually construct to preserve + signs in where clause
-                                                                    const baseUrl = 'https://eservices.dls.moi.gov.cy/arcgis/rest/services/National/General_Search/MapServer/0/query';
-                                                                    const outSREncoded = encodeURIComponent(JSON.stringify(outSR));
-                                                                    const whereEncoded = encodeURIComponent(whereClause).replace(/%2B/g, '+'); // Replace %2B with + to match original format
-                                                                    const fullUrl = `${baseUrl}?f=json&outFields=*&outSR=${outSREncoded}&returnGeometry=true&where=${whereEncoded}`;
-
-                                                                    // Log the request URL
-                                                                    console.log('API Request URL:', fullUrl);
-                                                                    console.log('Request Parameters:', {
-                                                                        distCode,
-                                                                        vilCode,
-                                                                        qrtrCodeValue,
-                                                                        blckCode,
-                                                                        sheet,
-                                                                        planNbr,
-                                                                        parcelNbr,
-                                                                        whereClause
-                                                                    });
-
-                                                                    // Make the API request
-                                                                    const response = await fetch(fullUrl);
-
-                                                                    if (!response.ok) {
-                                                                        throw new Error(`HTTP error! status: ${response.status}`);
-                                                                    }
-
-                                                                    const data = await response.json();
-                                                                    console.log('API Response Status:', response.status);
-                                                                    console.log('API Response Data:', data);
-                                                                    console.log('API Response (JSON):', JSON.stringify(data, null, 2));
-
-                                                                    // Extract SBPI_ID_NO from the response
-                                                                    const sbpiId = data?.features?.[0]?.attributes?.SBPI_ID_NO;
-                                                                    if (sbpiId !== undefined && sbpiId !== null) {
-                                                                        setSbpiIdNo(sbpiId);
-                                                                        console.log('SBPI_ID_NO:', sbpiId);
-                                                                        toast.success(`Query completed successfully. SBPI ID: ${sbpiId}`);
-                                                                    } else {
-                                                                        console.warn('SBPI_ID_NO not found in response');
-                                                                        toast.success('Query completed successfully (No SBPI ID found)');
-                                                                    }
-
-                                                                    // You can handle the response data here
-                                                                    // For example, display it in the right column or update state
-                                                                } catch (error) {
-                                                                    console.error('Error making API request:', error);
-                                                                    toast.error(`Failed to query: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                                                                }
-                                                            }}
-                                                            disabled={!eparchia || !dimos || !fyllo || !sxedio || !arithmosTemaxiou || !selectedRegionCodes?.distCode || !selectedRegionCodes?.vilCode}
-                                                        >
-                                                            <Search className="mr-2 h-4 w-4" />
-                                                            Find
-                                                        </Button>
-                                                    </span>
-                                                </TooltipTrigger>
-                                                {(!eparchia || !dimos || !fyllo || !sxedio || !arithmosTemaxiou) && (
-                                                    <TooltipContent>
-                                                        <p>Please fill in all required fields</p>
-                                                    </TooltipContent>
-                                                )}
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                    </div>
-                                </div>
-
-                                {/* Right Column: Reserved for API information display */}
-                                <div className="space-y-4">
-                                    {/* API information will be displayed here */}
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                                // Save to database
+                                await reportApi.update(reportId, {
+                                    sbpiIdNo: data.sbpiIdNo,
+                                    parcelDetails: data.parcelDetails,
+                                    parcelFetchedAt: new Date().toISOString(),
+                                    parcelSearchParams: data.searchParams,
+                                    kmlData: updatedKmlData,
+                                });
+                                console.log('Parcel data saved and mapped to variables');
+                            } catch (error) {
+                                console.error('Failed to save parcel data:', error);
+                            }
+                        }}
+                        setEparchia={setEparchia}
+                        setDimos={setDimos}
+                        setEnoria={setEnoria}
+                        setFyllo={setFyllo}
+                        setSxedio={setSxedio}
+                        setTmima={setTmima}
+                        setArithmosTemaxiou={setArithmosTemaxiou}
+                        setDimosOpen={setDimosOpen}
+                        setEparchiaOpen={setEparchiaOpen}
+                        setSelectedRegionCodes={setSelectedRegionCodes}
+                        setQrtrCode={setQrtrCode}
+                        setSbpiIdNo={setSbpiIdNo}
+                        setLoadingParcelQuery={setLoadingParcelQuery}
+                        setParcelDetails={setParcelDetails}
+                        clearEparchia={clearEparchia}
+                        clearDimos={clearDimos}
+                        clearEnoria={clearEnoria}
+                        clearFyllo={clearFyllo}
+                        clearSxedio={clearSxedio}
+                        clearTmima={clearTmima}
+                        clearAllParcelData={clearAllParcelData}
+                    />
                 )}
 
-            {/* PDF Upload Section (appears after KML upload) */}
+            {/* PDF Upload Section (PDF Extraction) */}
             {(() => {
-                const SHOW_PDF_EXTRACTION = true; // Set to false to disable PDF extraction
+                const SHOW_PDF_EXTRACTION = true; // Set to true to enable PDF extraction
                 return SHOW_PDF_EXTRACTION && selectedTemplate && selectedTemplate.requiresKml && step === 2;
             })() && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Upload Instructions PDF</CardTitle>
-                        <CardDescription>
-                            Extract values from an Instructions PDF and save it to the report.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <input ref={pdfInputRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfSelect} />
-                        {Object.keys(pdfExtractedValues).length === 0 && (
-                            <div
-                                onDragOver={(e) => { e.preventDefault(); }}
-                                onDrop={handlePdfDrop}
-                                className="border-2 border-dashed rounded-md p-8 text-center cursor-pointer"
-                                onClick={() => pdfInputRef.current?.click()}
-                            >
-                                {isExtractingPdf ? (
-                                    <div className="flex items-center justify-center gap-2">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        <p className="text-sm text-muted-foreground">Extracting values from PDF...</p>
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">Drop PDF here or click to select</p>
-                                )}
-                            </div>
-                        )}
-                        {Object.keys(pdfExtractedValues).length > 0 && (
-                            <div className="mt-4 p-4 bg-muted rounded-md">
-                                <div className="text-sm">
-                                    <div className="text-muted-foreground mb-2">Extracted Values:</div>
-                                    <div className="space-y-1">
-                                        {Object.entries(pdfExtractedValues).map(([label, value]) => (
-                                            <div key={label} className="pl-2">
-                                                <span className="font-medium">{label}:</span>{' '}
-                                                <span className="break-words">{value}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        {Object.keys(pdfExtractedValues).length > 0 && (
-                            <div className="mt-6">
-                                <Button variant="outline" onClick={() => pdfInputRef.current?.click()} disabled={isExtractingPdf}>
-                                    Upload another PDF
-                                </Button>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+                    <PdfExtraction
+                        pdfExtractedValues={pdfExtractedValues}
+                        isExtractingPdf={isExtractingPdf}
+                        onPdfSelect={handlePdfSelect}
+                        onPdfDrop={handlePdfDrop}
+                    />
+                )}
 
-            {/* Continue button for KML templates (appears after both KML and PDF sections) */}
+            {/* Continue Button for Step 2 (KML templates) */}
             {selectedTemplate && selectedTemplate.requiresKml && step === 2 && (
-                <div className="flex justify-end mt-6">
+                <div className="flex justify-end">
                     <Button onClick={async () => {
                         const id = await createReportIfNeeded();
                         if (!id) return toast.error('Failed to save report');
+                        // Merge form data with uploaded KML data
+                        const formKmlData = buildKmlDataFromForm();
+                        const mergedKmlData = { ...kmlData, ...formKmlData };
+                        console.log('Continue button - Current kmlData:', kmlData);
+                        console.log('Continue button - Form data:', formKmlData);
+                        console.log('Continue button - Merged data:', mergedKmlData);
                         try {
+                            // Include PDF extracted values if PDF extraction is enabled
+                            const SHOW_PDF_EXTRACTION = true; // Match the flag above
+                            const valuesToSave = SHOW_PDF_EXTRACTION && Object.keys(pdfExtractedValues).length > 0
+                                ? { ...variableValues, ...pdfExtractedValues }
+                                : variableValues;
                             await reportApi.update(id, {
-                                kmlData,
-                                values: {
-                                    ...variableValues,
-                                    ...pdfExtractedValues
-                                }
+                                kmlData: mergedKmlData,
+                                values: valuesToSave
                             });
-                        } catch { }
-                        setStep(3);
-                    }} disabled={isExtractingPdf}>
+                            setKmlData(mergedKmlData);
+                            // Use preserveExisting: true to not overwrite manually edited values
+                            injectKmlIntoVariables(mergedKmlData, true);
+                            setStep(3);
+                        } catch (error) {
+                            toast.error('Failed to save data');
+                        }
+                    }}>
                         Continue
                     </Button>
                 </div>
-            )}
-
-            {/* PDF Upload Section for non-KML templates */}
-            {(() => {
-                const SHOW_PDF_EXTRACTION = true; // Set to false to disable PDF extraction
-                return SHOW_PDF_EXTRACTION && selectedTemplate && !selectedTemplate.requiresKml && step === 1;
-            })() && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Upload Instructions PDF</CardTitle>
-                        <CardDescription>
-                            Extract value from an Instructions PDF and save it to the report.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <input ref={pdfInputRef} type="file" accept=".pdf" className="hidden" onChange={handlePdfSelect} />
-                        {Object.keys(pdfExtractedValues).length === 0 && (
-                            <div
-                                onDragOver={(e) => { e.preventDefault(); }}
-                                onDrop={handlePdfDrop}
-                                className="border-2 border-dashed rounded-md p-8 text-center cursor-pointer"
-                                onClick={() => pdfInputRef.current?.click()}
-                            >
-                                {isExtractingPdf ? (
-                                    <div className="flex items-center justify-center gap-2">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        <p className="text-sm text-muted-foreground">Extracting value from PDF...</p>
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-muted-foreground">Drop PDF here or click to select</p>
-                                )}
-                            </div>
-                        )}
-                        {Object.keys(pdfExtractedValues).length > 0 && (
-                            <div className="mt-4 p-4 bg-muted rounded-md">
-                                <div className="text-sm">
-                                    <div className="text-muted-foreground mb-2">Extracted Values:</div>
-                                    <div className="space-y-1">
-                                        {Object.entries(pdfExtractedValues).map(([label, value]) => (
-                                            <div key={label} className="pl-2">
-                                                <span className="font-medium">{label}:</span>{' '}
-                                                <span className="break-words">{value}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
             )}
 
             {selectedTemplate && (selectedTemplate.requiresKml ? step === 3 : step === 2) && (
