@@ -144,9 +144,9 @@ export default function FillTemplatePage() {
 
     // Build kmlData from form fields
     const buildKmlDataFromForm = (): Record<string, any> => {
+        // Only return form-specific fields, don't overwrite other kmlData fields
         return {
-            eparchia: eparchia || "", // This will be the code (e.g., "3D3")
-            eparchia_name: eparchia ? eparchiaCodeToName[eparchia] || "" : "", // Province name for display
+            eparchia: eparchia ? eparchiaCodeToName[eparchia] || "" : "", // Province name (e.g., "ΛΕΥΚΩΣΙΑ")
             dimos: dimos || "",
             dimos_vil_code: selectedRegionCodes?.vilCode || "",
             dimos_dist_code: selectedRegionCodes?.distCode || "",
@@ -156,10 +156,11 @@ export default function FillTemplatePage() {
             sxedio: sxedio || "",
             tmima: tmima || "",
             arithmos_temaxiou: arithmosTemaxiou || "",
+            // Note: Other fields (zone, building_coefficient, etc.) should be preserved from kmlData
         };
     };
 
-    const injectKmlIntoVariables = (incoming: Record<string, any>) => {
+    const injectKmlIntoVariables = (incoming: Record<string, any>, preserveExisting: boolean = false) => {
         if (!selectedTemplate || !incoming) return;
         setVariableValues(prev => {
             const next: VariableValue = { ...prev };
@@ -169,7 +170,15 @@ export default function FillTemplatePage() {
                         const fieldKey = (imp.kmlField as string) || '';
                         const nameKey = (imp.name as string) || fieldKey;
                         const val = incoming[fieldKey];
-                        if (nameKey && val !== undefined) next[nameKey] = String(val ?? '');
+
+                        // Only inject if value doesn't exist when preserveExisting is true
+                        const shouldInject = preserveExisting
+                            ? (nameKey && val !== undefined && (!next[nameKey] || next[nameKey] === ''))
+                            : (nameKey && val !== undefined);
+
+                        if (shouldInject) {
+                            next[nameKey] = String(val ?? '');
+                        }
                     }
                 });
             } else {
@@ -178,13 +187,92 @@ export default function FillTemplatePage() {
                         if (block.type === 'kml_variable' && block.kmlField) {
                             const key = block.kmlField as string;
                             const val = incoming[key];
-                            if (key && val !== undefined) next[key] = String(val ?? '');
+
+                            // Only inject if value doesn't exist when preserveExisting is true
+                            const shouldInject = preserveExisting
+                                ? (key && val !== undefined && (!next[key] || next[key] === ''))
+                                : (key && val !== undefined);
+
+                            if (shouldInject) {
+                                next[key] = String(val ?? '');
+                            }
                         }
                     });
                 });
             }
             return next;
         });
+    };
+
+    const mapApiResponseToKmlData = (parcelDetails: any): Record<string, string> => {
+        if (!parcelDetails) return {};
+
+        // Handle array response (take first item)
+        const data = Array.isArray(parcelDetails) ? parcelDetails[0] : parcelDetails;
+
+        // Build sheet/plan combination
+        const sheetPlanRaw = [data.PrSheetValue, data.PrPlanValue]
+            .filter(Boolean)
+            .join('/');
+
+        // Build registration number (format: registrationBlock/registrationNo)
+        const registrationNumber = [
+            String(data.PrRegistrationBlock ?? '0'),
+            String(data.PrRegistrationNo ?? '')
+        ].filter(Boolean).join('/');
+
+        // Convert decimal to percentage (e.g., 0.1 -> "10%")
+        const toPercentage = (value: number | null | undefined): string => {
+            if (value === null || value === undefined) return '';
+            return `${(value * 100).toFixed(0)}%`;
+        };
+
+        // Format currency (e.g., 16500 -> "€16,500")
+        const formatCurrency = (value: number | null | undefined): string => {
+            if (!value) return '';
+            return `€${value.toLocaleString('en-US')}`;
+        };
+
+        // Format height (e.g., 8.3 -> "8.3m")
+        const formatHeight = (value: number | null | undefined): string => {
+            if (value === null || value === undefined) return '';
+            return `${value}m`;
+        };
+
+        // Map API response fields to KML field names
+        const mapped: Record<string, string> = {
+            eparchia: data.DistrictName || data.PrDistrictNameEl || '',
+            municipality: data.MunicipalityName || data.PrMunicipalityNameEl || '',
+            region: data.PrLocation || '',
+            part: String(data.PrBlockValue ?? '').trim(),
+            plot_number: String(data.PrParcelNo ?? ''),
+            plot_area: data.PrParcelExtent ? data.PrParcelExtent.toLocaleString('en-US') : '',
+            sheet_plan: sheetPlanRaw,
+            sheet: String(data.PrSheetValue ?? ''),
+            plan: String(data.PrPlanValue ?? ''),
+            registration_number: registrationNumber,
+            property_type: data.PrSubPropertyKindNameEl || data.PrPropertyTypeNameEl || '',
+        };
+
+        // Add planning zone information if available
+        if (data.PrPlanningZone) {
+            const zone = data.PrPlanningZone;
+            if (zone.PrName) mapped.zone = zone.PrName;
+            if (zone.PrNameGr) mapped.zone_description = zone.PrNameGr;
+            if (zone.PrDensityRateQty !== undefined) mapped.building_coefficient = toPercentage(zone.PrDensityRateQty);
+            if (zone.PrCoverageRate !== undefined) mapped.coverage = toPercentage(zone.PrCoverageRate);
+            if (zone.PrStoreyNoQty !== undefined) mapped.floors = String(zone.PrStoreyNoQty);
+            if (zone.PrHeightMSR !== undefined) mapped.height = formatHeight(zone.PrHeightMSR);
+        }
+
+        // Add property values
+        if (data.PrPriceBase1 !== undefined) mapped.value_2018 = formatCurrency(data.PrPriceBase1);
+        if (data.PrPriceBase2 !== undefined) mapped.value_2021 = formatCurrency(data.PrPriceBase2);
+
+        // Filter out empty values
+        return Object.fromEntries(
+            Object.entries(mapped).filter(([_, value]) => value !== '')
+        );
     };
 
     const resolveUploadsUrl = (u?: string): string | undefined => {
@@ -650,7 +738,8 @@ export default function FillTemplatePage() {
                     if ((report as any).kmlData && typeof (report as any).kmlData === 'object') {
                         const loadedKmlData = (report as any).kmlData || {};
                         setKmlData(loadedKmlData);
-                        injectKmlIntoVariables(loadedKmlData);
+                        // Use preserveExisting: true to NOT overwrite values that were already loaded from report.values
+                        injectKmlIntoVariables(loadedKmlData, true);
 
                         // Populate form fields if they exist in the saved data
                         if (loadedKmlData.eparchia) {
@@ -693,6 +782,14 @@ export default function FillTemplatePage() {
                     if ((report as any).sbpiIdNo && (report as any).parcelDetails) {
                         setSbpiIdNo((report as any).sbpiIdNo);
                         setParcelDetails((report as any).parcelDetails);
+
+                        // Map parcel details to KML data and inject into variables
+                        // Use preserveExisting: true to NOT overwrite values that already exist
+                        const mappedData = mapApiResponseToKmlData((report as any).parcelDetails);
+                        if (Object.keys(mappedData).length > 0) {
+                            injectKmlIntoVariables(mappedData, true);
+                        }
+
                         console.log('Loaded saved parcel data:', {
                             sbpiIdNo: (report as any).sbpiIdNo,
                             fetchedAt: (report as any).parcelFetchedAt
@@ -1442,13 +1539,38 @@ export default function FillTemplatePage() {
                         onParcelFound={async (data) => {
                             if (!reportId) return;
                             try {
+                                // Map API response to KML data structure
+                                const mappedKmlData = mapApiResponseToKmlData(data.parcelDetails);
+
+                                // Also get the current form data
+                                const formKmlData = buildKmlDataFromForm();
+
+                                // Merge: existing kmlData -> form data -> API data (API data takes precedence)
+                                const updatedKmlData = {
+                                    ...kmlData,
+                                    ...formKmlData,
+                                    ...mappedKmlData,
+                                };
+
+                                // Inject the mapped values into template variables
+                                injectKmlIntoVariables(mappedKmlData);
+
+                                // Update kmlData state
+                                setKmlData(updatedKmlData);
+
+                                // Log what we're about to save
+                                console.log('Saving kmlData to database:', updatedKmlData);
+                                console.log('API mapped fields:', Object.keys(mappedKmlData));
+
+                                // Save to database
                                 await reportApi.update(reportId, {
                                     sbpiIdNo: data.sbpiIdNo,
                                     parcelDetails: data.parcelDetails,
                                     parcelFetchedAt: new Date().toISOString(),
                                     parcelSearchParams: data.searchParams,
+                                    kmlData: updatedKmlData,
                                 });
-                                console.log('Parcel data saved to report');
+                                console.log('Parcel data saved and mapped to variables');
                             } catch (error) {
                                 console.error('Failed to save parcel data:', error);
                             }
@@ -1499,6 +1621,9 @@ export default function FillTemplatePage() {
                         // Merge form data with uploaded KML data
                         const formKmlData = buildKmlDataFromForm();
                         const mergedKmlData = { ...kmlData, ...formKmlData };
+                        console.log('Continue button - Current kmlData:', kmlData);
+                        console.log('Continue button - Form data:', formKmlData);
+                        console.log('Continue button - Merged data:', mergedKmlData);
                         try {
                             // Include PDF extracted values if PDF extraction is enabled
                             const SHOW_PDF_EXTRACTION = true; // Match the flag above
@@ -1510,7 +1635,8 @@ export default function FillTemplatePage() {
                                 values: valuesToSave
                             });
                             setKmlData(mergedKmlData);
-                            injectKmlIntoVariables(mergedKmlData);
+                            // Use preserveExisting: true to not overwrite manually edited values
+                            injectKmlIntoVariables(mergedKmlData, true);
                             setStep(3);
                         } catch (error) {
                             toast.error('Failed to save data');
