@@ -1925,9 +1925,10 @@ export default function FillTemplatePage() {
                                                     {imp.type === 'kml' && imp.kmlField && (
                                                         <Badge variant="outline" className="text-xs">KML Field: {imp.kmlField}</Badge>
                                                     )}
-                                                    {imp.type === 'calculated' && imp.expression && (
+                                                    {/* Calculated variables disabled for security */}
+                                                    {/* {imp.type === 'calculated' && imp.expression && (
                                                         <div className="text-xs text-muted-foreground">Expression: {imp.expression}</div>
-                                                    )}
+                                                    )} */}
                                                 </div>
                                             );
                                         }

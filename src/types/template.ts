@@ -37,7 +37,7 @@ export interface TemplateSection {
   order: number;
 }
 
-export type ImportedFieldType = 'text' | 'kml' | 'image' | 'select' | 'date' | 'calculated';
+export type ImportedFieldType = 'text' | 'kml' | 'image' | 'select' | 'date'; // 'calculated' removed for security
 
 export interface ImportedVariable {
   id: string;
@@ -45,7 +45,7 @@ export interface ImportedVariable {
   type: ImportedFieldType;
   kmlField?: KMLFieldType;
   options?: string[];
-  expression?: string;
+  // expression?: string; // REMOVED: Security vulnerability
   description?: string;
   sourceText?: string;
   isRequired?: boolean;

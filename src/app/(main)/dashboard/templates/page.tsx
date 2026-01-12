@@ -45,7 +45,7 @@ export default function TemplatesPage() {
         setDraftGroups([...(tpl.variableGroups || []).map((g: any) => ({ ...g }))]);
     };
 
-    const TYPE_OPTIONS = ["text", "kml", "image", "select", "date", "calculated"] as const;
+    const TYPE_OPTIONS = ["text", "kml", "image", "select", "date"] as const; // "calculated" removed for security
 
     const persistEdit = async () => {
         if (!editingTemplate) return;
