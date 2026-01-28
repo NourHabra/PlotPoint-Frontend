@@ -1507,7 +1507,7 @@ export default function FillTemplatePage() {
 
             {/* Step 2: KML Data Entry (Parcel Search) (only if template requires KML) */}
             {(() => {
-                const SHOW_KML_DATA_ENTRY = true; // Set to false to disable KML data entry form
+                const SHOW_KML_DATA_ENTRY = false; // Set to false to disable KML data entry form
                 return SHOW_KML_DATA_ENTRY && selectedTemplate && selectedTemplate.requiresKml && step === 2;
             })() && (
                     <ParcelSearch
