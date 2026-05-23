@@ -561,19 +561,22 @@ function AccessDialog({
                                 <p className="text-sm text-muted-foreground">No users found.</p>
                             ) : (
                                 <div className="border rounded-md divide-y max-h-60 overflow-y-auto">
-                                    {allUsers.map((user) => (
-                                        <div key={user.id} className="flex items-center gap-3 px-3 py-2">
+                                    {allUsers.map((user) => {
+                                        const uid = String((user as any)._id || user.id || "");
+                                        return (
+                                        <div key={uid} className="flex items-center gap-3 px-3 py-2">
                                             <Checkbox
-                                                id={`access-user-${user.id}`}
-                                                checked={allowedUserIds.includes(user.id)}
-                                                onCheckedChange={() => toggleUser(user.id)}
+                                                id={`access-user-${uid}`}
+                                                checked={allowedUserIds.includes(uid)}
+                                                onCheckedChange={() => toggleUser(uid)}
                                             />
-                                            <label htmlFor={`access-user-${user.id}`} className="flex-1 text-sm cursor-pointer">
+                                            <label htmlFor={`access-user-${uid}`} className="flex-1 text-sm cursor-pointer">
                                                 <span className="font-medium">{user.name}</span>
                                                 <span className="text-muted-foreground ml-2">{user.email}</span>
                                             </label>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                             {!availableToAll && allowedUserIds.length === 0 && (
