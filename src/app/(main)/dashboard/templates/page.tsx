@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Plus, Search, Filter, MoreHorizontal, Edit, Copy, Trash2, Eye, FileText, Loader2, RotateCcw, FileEdit, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Search, Filter, MoreHorizontal, Edit, Copy, Trash2, Eye, FileText, Loader2, RotateCcw, FileEdit, ChevronUp, ChevronDown, Users, Lock, Globe } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,8 +23,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { templateApi, ApiError } from "@/lib/api";
+import { templateApi, authApi, ApiError, type UserDto } from "@/lib/api";
 import { Template } from "@/types/template";
 
 export default function TemplatesPage() {
@@ -39,10 +40,52 @@ export default function TemplatesPage() {
     const [newGroupName, setNewGroupName] = useState("");
     const [newGroupDescription, setNewGroupDescription] = useState("");
 
+    // Access control dialog state
+    const [accessTemplate, setAccessTemplate] = useState<Template | null>(null);
+    const [draftAvailableToAll, setDraftAvailableToAll] = useState(true);
+    const [draftAllowedUserIds, setDraftAllowedUserIds] = useState<string[]>([]);
+    const [allUsers, setAllUsers] = useState<UserDto[]>([]);
+    const [savingAccess, setSavingAccess] = useState(false);
+
     const openEdit = (tpl: Template) => {
         setEditingTemplate(tpl);
         setDraftVariables([...(tpl.variables || []).map((v: any) => ({ ...v }))]);
         setDraftGroups([...(tpl.variableGroups || []).map((g: any) => ({ ...g }))]);
+    };
+
+    const openAccess = async (tpl: Template) => {
+        setAccessTemplate(tpl);
+        setDraftAvailableToAll((tpl as any).availableToAll !== false);
+        setDraftAllowedUserIds([...((tpl as any).allowedUserIds || [])]);
+        try {
+            const users = await authApi.listUsers();
+            setAllUsers(users.filter((u) => u.role !== 'Admin'));
+        } catch {
+            setAllUsers([]);
+        }
+    };
+
+    const persistAccess = async () => {
+        if (!accessTemplate) return;
+        const id = String((accessTemplate as any)._id || (accessTemplate as any).id);
+        if (!draftAvailableToAll && draftAllowedUserIds.length === 0) {
+            toast.error("Select at least one user when restricting access.");
+            return;
+        }
+        try {
+            setSavingAccess(true);
+            await templateApi.update(id, {
+                availableToAll: draftAvailableToAll,
+                allowedUserIds: draftAvailableToAll ? [] : draftAllowedUserIds,
+            });
+            toast.success("Access settings saved");
+            setAccessTemplate(null);
+            loadTemplates();
+        } catch (e) {
+            if (e instanceof ApiError) toast.error(e.message); else toast.error("Failed to save access settings");
+        } finally {
+            setSavingAccess(false);
+        }
     };
 
     const TYPE_OPTIONS = ["text", "kml", "image", "select", "date"] as const; // "calculated" removed for security
@@ -206,8 +249,13 @@ export default function TemplatesPage() {
                                                         <CardDescription className="line-clamp-2">
                                                             {template.description}
                                                         </CardDescription>
-                                                        <div>
+                                                        <div className="flex flex-wrap gap-1">
                                                             <Badge variant="secondary" className="text-xs">{stats.variables} variables</Badge>
+                                                            {(template as any).availableToAll === false ? (
+                                                                <Badge variant="outline" className="text-xs gap-1"><Lock className="h-3 w-3" />Restricted</Badge>
+                                                            ) : (
+                                                                <Badge variant="outline" className="text-xs gap-1"><Globe className="h-3 w-3" />All users</Badge>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <DropdownMenu>
@@ -243,6 +291,10 @@ export default function TemplatesPage() {
                                                                     <TooltipContent>Coming soon</TooltipContent>
                                                                 </Tooltip>
                                                             </TooltipProvider>
+                                                            <DropdownMenuItem onClick={() => openAccess(template)}>
+                                                                <Users className="h-4 w-4 mr-2" />
+                                                                Manage Access
+                                                            </DropdownMenuItem>
                                                             <TooltipProvider>
                                                                 <Tooltip>
                                                                     <TooltipTrigger asChild>
@@ -314,8 +366,13 @@ export default function TemplatesPage() {
                                                         <CardDescription className="line-clamp-2">
                                                             {template.description}
                                                         </CardDescription>
-                                                        <div>
+                                                        <div className="flex flex-wrap gap-1">
                                                             <Badge variant="secondary" className="text-xs">{stats.variables} variables</Badge>
+                                                            {(template as any).availableToAll === false ? (
+                                                                <Badge variant="outline" className="text-xs gap-1"><Lock className="h-3 w-3" />Restricted</Badge>
+                                                            ) : (
+                                                                <Badge variant="outline" className="text-xs gap-1"><Globe className="h-3 w-3" />All users</Badge>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <DropdownMenu>
@@ -332,6 +389,10 @@ export default function TemplatesPage() {
                                                             <DropdownMenuItem onClick={() => openEdit(template)}>
                                                                 <Edit className="h-4 w-4 mr-2" />
                                                                 Edit
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => openAccess(template)}>
+                                                                <Users className="h-4 w-4 mr-2" />
+                                                                Manage Access
                                                             </DropdownMenuItem>
                                                             <DropdownMenuItem>
                                                                 <Copy className="h-4 w-4 mr-2" />
@@ -402,6 +463,18 @@ export default function TemplatesPage() {
                 saving={savingEdit}
             />
 
+            <AccessDialog
+                open={!!accessTemplate}
+                onOpenChange={(o) => { if (!o) setAccessTemplate(null); }}
+                availableToAll={draftAvailableToAll}
+                setAvailableToAll={setDraftAvailableToAll}
+                allowedUserIds={draftAllowedUserIds}
+                setAllowedUserIds={setDraftAllowedUserIds}
+                allUsers={allUsers}
+                onSave={persistAccess}
+                saving={savingAccess}
+            />
+
             {/* Empty State */}
             {!loading && filteredTemplates.length === 0 && (
                 <Card className="text-center py-12">
@@ -432,6 +505,91 @@ export default function TemplatesPage() {
                 </Card>
             )}
         </div>
+    );
+}
+
+// Access Control Dialog
+function AccessDialog({
+    open,
+    onOpenChange,
+    availableToAll,
+    setAvailableToAll,
+    allowedUserIds,
+    setAllowedUserIds,
+    allUsers,
+    onSave,
+    saving,
+}: {
+    open: boolean;
+    onOpenChange: (o: boolean) => void;
+    availableToAll: boolean;
+    setAvailableToAll: (v: boolean) => void;
+    allowedUserIds: string[];
+    setAllowedUserIds: (ids: string[]) => void;
+    allUsers: UserDto[];
+    onSave: () => void;
+    saving: boolean;
+}) {
+    const toggleUser = (id: string) => {
+        setAllowedUserIds(
+            allowedUserIds.includes(id)
+                ? allowedUserIds.filter((u) => u !== id)
+                : [...allowedUserIds, id]
+        );
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Manage Access</DialogTitle>
+                    <DialogDescription>Control which users can see and use this template.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">Available to all users</Label>
+                            <p className="text-xs text-muted-foreground">When on, every authenticated user can access this template.</p>
+                        </div>
+                        <Switch checked={availableToAll} onCheckedChange={setAvailableToAll} />
+                    </div>
+
+                    {!availableToAll && (
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Allowed users</Label>
+                            {allUsers.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No users found.</p>
+                            ) : (
+                                <div className="border rounded-md divide-y max-h-60 overflow-y-auto">
+                                    {allUsers.map((user) => (
+                                        <div key={user.id} className="flex items-center gap-3 px-3 py-2">
+                                            <Checkbox
+                                                id={`access-user-${user.id}`}
+                                                checked={allowedUserIds.includes(user.id)}
+                                                onCheckedChange={() => toggleUser(user.id)}
+                                            />
+                                            <label htmlFor={`access-user-${user.id}`} className="flex-1 text-sm cursor-pointer">
+                                                <span className="font-medium">{user.name}</span>
+                                                <span className="text-muted-foreground ml-2">{user.email}</span>
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {!availableToAll && allowedUserIds.length === 0 && (
+                                <p className="text-xs text-destructive">Select at least one user.</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                    <Button onClick={onSave} disabled={saving || (!availableToAll && allowedUserIds.length === 0)}>
+                        {saving ? 'Saving…' : 'Save changes'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 

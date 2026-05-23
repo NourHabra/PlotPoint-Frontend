@@ -66,6 +66,9 @@ export interface Template {
   updatedAt: Date;
   createdBy: string;
   isActive: boolean;
+  // Access control: admins can restrict a template to specific users
+  availableToAll?: boolean;
+  allowedUserIds?: string[];
   // Word import support
   sourceDocxPath?: string;
   previewPdfPath?: string;
